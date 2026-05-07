@@ -4,6 +4,59 @@
 
 ---
 
+## 🚀 PRIMER PASO: Instalar Docker Desktop
+
+**Si no lo tienen aún, comiencen por acá. No pueden hacer nada sin esto.**
+
+### Windows (Lo más probable)
+
+1. **Descargen Docker Desktop:** https://www.docker.com/products/docker-desktop
+2. **Ejecuten el instalador** (.exe que bajaron)
+3. **Acepten TODOS los permisos** que pide (importante)
+4. **Reinicien la máquina** (sí, obligatorio. No lo salten.)
+5. **Abran Docker Desktop** (icono en aplicaciones o bandeja de tareas)
+   - Busquen la ballena azul 🐳
+   - Esperen a que diga "Docker Desktop is running"
+   - Puede tardar 1-2 minutos la primera vez
+
+**Verificar que funciona:**
+```bash
+# Abran PowerShell y corran:
+docker --version
+# Deberían ver algo como: Docker version 24.0.0, build xxxxx
+```
+
+Si ven un error "Cannot connect to Docker daemon":
+- Abran Docker Desktop (icono en taskbar, esquina inferior derecha)
+- Esperen 30 segundos
+- Reintenten el comando
+
+### macOS
+
+1. **Descargen Docker Desktop:** https://www.docker.com/products/docker-desktop (versión Mac Intel o Apple Silicon según su chip)
+2. **Ejecuten el .dmg** y arrastren Docker a Applications
+3. **Abran Docker** desde Applications
+4. **Acepten el password** si pide (es necesario para VM)
+
+```bash
+# Verificar en terminal:
+docker --version
+```
+
+### Linux (Si alguien usa)
+
+```bash
+# Ubuntu/Debian:
+sudo apt-get update
+sudo apt-get install docker.io docker-compose
+
+# Iniciar servicio:
+sudo systemctl start docker
+sudo systemctl enable docker
+```
+
+---
+
 ## ¿Qué es Docker?
 
 Docker es **una caja de seguridad virtual** donde vive todo lo que necesita el proyecto:
@@ -163,67 +216,4 @@ git push origin feature/sentiment
 ```bash
 # Alguien más usa ese puerto
 # Solución: Cierra Docker en otra terminal (Ctrl+C, docker-compose down)
-# O usa puerto diferente (no lo hagan sin preguntar)
-```
-
-### "Cannot connect to Docker daemon"
-```bash
-# Docker Desktop no está corriendo
-# Solución: Abre Docker Desktop (icono en aplicaciones)
-# Espera 30 seg
-```
-
-### "Module not found"
-```bash
-# Docker no instaló las librerías
-# Solución: Cierra Docker (Ctrl+C, docker-compose down)
-# Abre de nuevo: docker-compose up --build
-```
-
-### "BERT is slow / consuming RAM"
-```bash
-# Normal. BERT es lento. Docker maneja la RAM.
-# No es bug, es característica.
-# Solución: Paciencia. Usen cache (ya implementado).
-```
-
----
-
-## Checklist cada mañana
-
-- [ ] Docker Desktop abierto (ballena en tareas)
-- [ ] `docker-compose up` corriendo
-- [ ] Backend responde: `curl http://localhost:8000/health`
-- [ ] Frontend carga: http://localhost:3000
-- [ ] Cero errores rojos en la terminal
-
-Si todo ✅ = a trabajar.
-
----
-
-## Lo más importante
-
-**Docker NO es mágico. Es una herramienta.**
-
-- ✅ Usen `docker-compose up` cada mañana
-- ✅ Trabajen normal (editen código, hagan commits)
-- ✅ Cierren con `docker-compose down` cada tarde
-- ✅ El código se guarda en Git (no desaparece)
-
-**No teman a Docker. Es su aliado.**
-
----
-
-## ¿Preguntas?
-
-Discord → #equipo-2 (o #equipo-1)
-
-Cualquier problema = pregunten. Para eso estamos.
-
----
-
-**Analogía final:**
-
-Docker es como un simulador de máquina real. Adentro, todo funciona exacto. Afuera, su compu está intacta. El código vive en su máquina. Docker es solo el "execute button".
-
-Fin. 🚀
+# O usa puerto 
