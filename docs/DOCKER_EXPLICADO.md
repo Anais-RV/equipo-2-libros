@@ -216,4 +216,67 @@ git push origin feature/sentiment
 ```bash
 # Alguien más usa ese puerto
 # Solución: Cierra Docker en otra terminal (Ctrl+C, docker-compose down)
-# O usa puerto 
+# O usa puerto diferente (no lo hagan sin preguntar)
+```
+
+### "Cannot connect to Docker daemon"
+```bash
+# Docker Desktop no está corriendo
+# Solución: Abre Docker Desktop (icono en aplicaciones)
+# Espera 30 seg
+```
+
+### "Module not found"
+```bash
+# Docker no instaló las librerías
+# Solución: Cierra Docker (Ctrl+C, docker-compose down)
+# Abre de nuevo: docker-compose up --build
+```
+
+### "BERT is slow / consuming RAM"
+```bash
+# Normal. BERT es lento. Docker maneja la RAM.
+# No es bug, es característica.
+# Solución: Paciencia. Usen cache (ya implementado).
+```
+
+---
+
+## Checklist cada mañana
+
+- [ ] Docker Desktop abierto (ballena en tareas)
+- [ ] `docker-compose up` corriendo
+- [ ] Backend responde: `curl http://localhost:8000/health`
+- [ ] Frontend carga: http://localhost:3000
+- [ ] Cero errores rojos en la terminal
+
+Si todo ✅ = a trabajar.
+
+---
+
+## Lo más importante
+
+**Docker NO es mágico. Es una herramienta.**
+
+- ✅ Usen `docker-compose up` cada mañana
+- ✅ Trabajen normal (editen código, hagan commits)
+- ✅ Cierren con `docker-compose down` cada tarde
+- ✅ El código se guarda en Git (no desaparece)
+
+**No teman a Docker. Es su aliado.**
+
+---
+
+## ¿Preguntas?
+
+Discord → #equipo-2 (o #equipo-1)
+
+Cualquier problema = pregunten. Para eso estamos.
+
+---
+
+**Analogía final:**
+
+Docker es como un simulador de máquina real. Adentro, todo funciona exacto. Afuera, su compu está intacta. El código vive en su máquina. Docker es solo el "execute button".
+
+Fin. 🚀
