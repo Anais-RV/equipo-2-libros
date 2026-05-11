@@ -157,15 +157,16 @@ def load_dataset() -> Tuple[pd.DataFrame, pd.DataFrame]:
         3. Identificar columnas relevantes
         4. Detectar valores nulos
     """
-    # TODO: Implementar carga
-    # Sugerencia:
-    # books = pd.read_csv(BOOKS_CSV)
-    # Opción A: CSV
-    # reviews = pd.read_csv(os.path.join(DATA_PATH, 'reviews.csv'))
-    # Opción B: SQLite
-    # conn = sqlite3.connect(REVIEWS_DB)
-    # reviews = pd.read_sql("SELECT * FROM reviews", conn)
-    pass
+    # Cargar libros CSV
+    books = pd.read_csv(BOOKS_CSV)
+
+    # Cargar reviews desde SQLite
+    conn = sqlite3.connect(REVIEWS_DB)
+    reviews = pd.read_sql("SELECT * FROM book_reviews", conn)
+    conn.close()
+
+    return books, reviews
+pass
 
 
 def preprocess_reviews(
@@ -199,13 +200,22 @@ def preprocess_reviews(
         2. Documentar cambios
         3. Considerar impacto en análisis
     """
-    # TODO: Implementar limpieza
-    # Sugerencia:
-    # 1. df = reviews_df[reviews_df['review_text'].notna()].copy()
-    # 2. df['review_text'] = df['review_text'].apply(clean_text)
-    # 3. df = df[df['review_text'].apply(validate_review)]
-    # 4. df = df.drop_duplicates(subset=['review_text'])
-    pass
+    df = reviews_df.copy()
+
+    # Eliminar reviews nulas
+    df = df[df["review_content"].notna()].copy()
+
+    # Limpiar texto
+    df["review_content"] = df["review_content"].apply(clean_text)
+
+    # Validar longitud mínima
+    df = df[df["review_content"].apply(lambda text: validate_review(text, min_review_length))]
+
+    # Eliminar duplicados
+    df = df.drop_duplicates(subset=["review_content"])
+
+    return df
+pass
 
 
 def get_book_stats(books_df: pd.DataFrame, reviews_df: pd.DataFrame) -> dict:
@@ -225,15 +235,14 @@ def get_book_stats(books_df: pd.DataFrame, reviews_df: pd.DataFrame) -> dict:
         Entender características del dataset
         Verificar que la carga fue correcta
     """
-    # TODO: Implementar estadísticas
-    # Sugerencia:
-    # return {
-    #     "total_books": len(books_df),
-    #     "total_reviews": len(reviews_df),
-    #     "avg_reviews_per_book": len(reviews_df) / len(books_df),
-    #     ...
-    # }
-    pass
+    return {
+    "total_books": len(books_df),
+    "total_reviews": len(reviews_df),
+    "avg_reviews_per_book": round(len(reviews_df) / len(books_df), 2),
+    "books_columns": books_df.columns.tolist(),
+    "reviews_columns": reviews_df.columns.tolist()
+}
+pass
 
 
 # ============================================
