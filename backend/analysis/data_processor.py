@@ -119,6 +119,16 @@ def validate_review(review_text: str, min_length: int = 10) -> bool:
     # Más validaciones pueden ir aquí
     return True
 
+def parse_review_rating(rating_text)->int: #convertir rating str a int
+    if pd.isna(rating_text):
+        return None 
+    rating_text = str(rating_text).strip()
+    match = re.search(r"Rating\s(\d+)\s+out off\s+5", rating_text, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    return None
+
+   
 
 # ============================================
 # FUNCIONES PRINCIPALES
@@ -214,8 +224,11 @@ def preprocess_reviews(
     # Eliminar duplicados
     df = df.drop_duplicates(subset=["review_content"])
 
+    #Limpiar ratings reviews
+    if "review_rating" in df.columns:
+        df["review_rating_clean"] = df["review_rating"].apply(parse_review_rating) 
     return df
-pass
+    
 
 
 def get_book_stats(books_df: pd.DataFrame, reviews_df: pd.DataFrame) -> dict:
