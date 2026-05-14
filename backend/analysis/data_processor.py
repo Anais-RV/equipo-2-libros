@@ -110,15 +110,69 @@ def validate_review(review_text: str, min_length: int = 10) -> bool:
         - Detectar idioma (mantener solo inglés)
         - Score de relevancia
     """
+
+    """
+    Valida si una review es usable para análisis.
+    """
     if not isinstance(review_text, str):
         return False
 
-    if len(review_text.strip()) < min_length:
+    text = review_text.strip()
+
+    # No vacía / longitud mínima
+    if len(text) < min_length:
         return False
 
-    # Más validaciones pueden ir aquí
+    # Evitar reviews demasiado cortas tipo "5 stars"
+    if text in ["5 stars", "4 stars", "3 stars", "2 stars", "1 star"]:
+        return False
+
+    # Evitar textos repetitivos tipo "good good good good good"
+    words = text.split()
+    if len(words) >= 5:
+        unique_ratio = len(set(words)) / len(words)
+        if unique_ratio < 0.4:
+            return False
+
+    # Evitar reviews con casi solo números
+    letters = re.findall(r"[a-zA-Z]", text)
+    if len(letters) < min_length:
+        return False
+
     return True
 
+def parse_review_rating(rating_text) -> float:
+    """
+    Convierte ratings tipo 'Rating 4 out of 5' a número.
+    """
+    if pd.isna(rating_text):
+        return None
+
+    rating_text = str(rating_text).strip()
+
+    match = re.search(r'(\d+)\s+out of\s+5', rating_text, re.IGNORECASE)
+
+    if match:
+        return float(match.group(1))
+    
+
+def extract_publication_year(publication_info):
+    """
+    Extrae el año desde publication_info.
+    """
+    if pd.isna(publication_info):
+        return None
+
+    publication_info = str(publication_info)
+
+    match = re.search(r'\b(19\d{2}|20\d{2})\b', publication_info)
+
+    if match:
+        return int(match.group(1))
+
+    return None
+
+    
 
 # ============================================
 # FUNCIONES PRINCIPALES
@@ -157,15 +211,19 @@ def load_dataset() -> Tuple[pd.DataFrame, pd.DataFrame]:
         3. Identificar columnas relevantes
         4. Detectar valores nulos
     """
-    # TODO: Implementar carga
-    # Sugerencia:
-    # books = pd.read_csv(BOOKS_CSV)
-    # Opción A: CSV
-    # reviews = pd.read_csv(os.path.join(DATA_PATH, 'reviews.csv'))
-    # Opción B: SQLite
-    # conn = sqlite3.connect(REVIEWS_DB)
-    # reviews = pd.read_sql("SELECT * FROM reviews", conn)
-    pass
+    # Cargar libros CSV
+    books = pd.read_csv(BOOKS_CSV)
+    # Convertir dato a datatime
+    books["publication_year"] = books["publication_info"].apply(extract_publication_year).astype("Int64")
+
+
+    # Cargar reviews desde SQLite
+    conn = sqlite3.connect(REVIEWS_DB)
+    reviews = pd.read_sql("SELECT * FROM book_reviews", conn)
+    conn.close()
+
+    return books, reviews
+
 
 
 def preprocess_reviews(
@@ -199,13 +257,34 @@ def preprocess_reviews(
         2. Documentar cambios
         3. Considerar impacto en análisis
     """
-    # TODO: Implementar limpieza
-    # Sugerencia:
-    # 1. df = reviews_df[reviews_df['review_text'].notna()].copy()
-    # 2. df['review_text'] = df['review_text'].apply(clean_text)
-    # 3. df = df[df['review_text'].apply(validate_review)]
-    # 4. df = df.drop_duplicates(subset=['review_text'])
-    pass
+    df = reviews_df.copy()
+
+    # Validar longitud mínima
+    df = df[df["review_content"].apply(lambda text: validate_review(text, min_review_length))]
+
+    # Eliminar duplicados
+    df = df.drop_duplicates(subset=["review_content"])
+
+    # Limpiar texto
+    df["review_content"] = df["review_content"].apply(clean_text)
+
+    # Validar longitud mínima
+    df = df[df["review_content"].apply(lambda text: validate_review(text, min_review_length))]
+
+    # Eliminar duplicados
+    df = df.drop_duplicates(subset=["review_content"])
+
+    # Limpiar rating de review
+    if "review_rating" in df.columns:
+     df["review_rating"] = df["review_rating"].apply(parse_review_rating)
+
+    # Eliminar reviews sin rating válido
+    df = df[df["review_rating"].notna()].copy()
+
+    # Convertir a entero nullable de pandas
+    df["review_rating"] = df["review_rating"].astype("Int64")
+    return df
+
 
 
 def get_book_stats(books_df: pd.DataFrame, reviews_df: pd.DataFrame) -> dict:
@@ -225,15 +304,14 @@ def get_book_stats(books_df: pd.DataFrame, reviews_df: pd.DataFrame) -> dict:
         Entender características del dataset
         Verificar que la carga fue correcta
     """
-    # TODO: Implementar estadísticas
-    # Sugerencia:
-    # return {
-    #     "total_books": len(books_df),
-    #     "total_reviews": len(reviews_df),
-    #     "avg_reviews_per_book": len(reviews_df) / len(books_df),
-    #     ...
-    # }
-    pass
+    return {
+    "total_books": len(books_df),
+    "total_reviews": len(reviews_df),
+    "avg_reviews_per_book": round(len(reviews_df) / len(books_df), 2),
+    "books_columns": books_df.columns.tolist(),
+    "reviews_columns": reviews_df.columns.tolist()
+}
+
 
 
 # ============================================
@@ -252,6 +330,10 @@ if __name__ == "__main__":
 
     print("\nLimpiando reviews...")
     reviews_clean = preprocess_reviews(reviews)
+    print("\nReview rating limpio:")
+    print(reviews_clean["review_rating"].head(10))
+    print("Tipo:", reviews_clean["review_rating"].dtype)
+    print("Valores únicos:", sorted(reviews_clean["review_rating"].dropna().unique()))
     print(f"Reviews después de limpiar: {reviews_clean.shape}")
 
     print("\nEstadísticas...")
