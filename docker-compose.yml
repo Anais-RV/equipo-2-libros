@@ -6,13 +6,11 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - PYTHONUNBUFFERED=1
     volumes:
-      - ./backend:/app/backend
-      - ./data:/app/data
-      - ./archive:/app/archive
+      - ./:/app
     working_dir: /app/backend
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
@@ -21,9 +19,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
-      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_API_URL=http://localhost:8001
       - CI=true
     volumes:
       - ./frontend:/app
