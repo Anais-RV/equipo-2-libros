@@ -2,7 +2,8 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.7.0
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend ./backend
