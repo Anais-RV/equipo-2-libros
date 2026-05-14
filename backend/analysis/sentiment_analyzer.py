@@ -1,46 +1,26 @@
 """
 🦄 Sentiment Analyzer - El corazón del análisis
-
-Aquí es donde pasa la magia (y el marron). BERT te va a analizar
-63K reviews buscando 6 emociones.
-
-ADVERTENCIA: BERT es lento. Muy lento. Como una tortuga en invierno.
-- 1 review = 1-2 segundos
-- 200 reviews = 3-6 minutos
-- No hagas esto on-demand o los usuarios se harán viejos esperando
-
-SOLUCIÓN: Cachear. Ver cache_manager.py.
-
-Emociones que detecta BERT:
-- joy (alegría)
-- sadness (tristeza)
-- fear (miedo)
-- surprise (sorpresa)
-- anger (ira)
-- disgust (repulsión)
-
-Retorna un dict como este:
-{
-    "joy": 0.75,
-    "sadness": 0.2,
-    "fear": 0.1,
-    "surprise": 0.65,
-    "anger": 0.05,
-    "disgust": 0.08,
-    "average_sentiment": 0.64
-}
 """
 
 import pandas as pd
 from typing import Dict
 import os
+from transformers import pipeline
 
 # ============================================
 # CONFIGURACIÓN
 # ============================================
 
 DATA_PATH = os.path.join(os.path.dirname(__file__), '../../data')
-EMOTIONS = ['joy', 'sadness', 'fear', 'surprise', 'anger', 'disgust']
+
+EMOTIONS = [
+    'joy',
+    'sadness',
+    'fear',
+    'surprise',
+    'anger',
+    'disgust'
+]
 
 # ============================================
 # FUNCIONES HELPER
@@ -48,171 +28,214 @@ EMOTIONS = ['joy', 'sadness', 'fear', 'surprise', 'anger', 'disgust']
 
 def load_book_reviews(book_title: str) -> pd.DataFrame:
     """
-    Carga las reviews de un libro específico del dataset.
-
-    Args:
-        book_title: Título del libro a buscar
-
-    Returns:
-        DataFrame con reviews del libro
-
-    Nota:
-        Los estudiantes pueden mejorar:
-        - Búsqueda fuzzy (por si el título no es exacto)
-        - Case-insensitive search
-        - Búsqueda por autor también
+    Carga las reviews de un libro específico.
     """
-    # TODO: Implementar carga del dataset
-    # Sugerencia: Usar pandas.read_csv() o sqlite3
-    # df = pd.read_csv(f"{DATA_PATH}/Book_Details.csv")
-    # book_reviews = df[df['title'].str.lower() == book_title.lower()]
-    pass
+
+    books_path = os.path.join(DATA_PATH, "books_clean.csv")
+    reviews_path = os.path.join(DATA_PATH, "reviews_clean.csv")
+
+    books_df = pd.read_csv(books_path)
+    reviews_df = pd.read_csv(reviews_path)
+
+    # Buscar libro ignorando mayúsculas/minúsculas
+    book_match = books_df[
+        books_df["book_title"].str.lower() == book_title.lower()
+    ]
+
+    if book_match.empty:
+        raise ValueError(
+            f"No se encontró el libro: {book_title}"
+        )
+
+    # Obtener book_id
+    book_id = book_match.iloc[0]["book_id"]
+
+    # Filtrar reviews del libro
+    book_reviews = reviews_df[
+        reviews_df["book_id"] == book_id
+    ]
+
+    if book_reviews.empty:
+        raise ValueError(
+            f"No hay reviews para el libro: {book_title}"
+        )
+
+    return book_reviews
 
 
-def apply_bert_to_reviews(reviews: pd.Series) -> pd.DataFrame:
+def apply_bert_to_reviews(
+    reviews: pd.Series
+) -> pd.DataFrame:
     """
-    Aplica modelo BERT pre-entrenado para detectar emociones en cada review.
-
-    Args:
-        reviews: Series de textos (reviews)
-
-    Returns:
-        DataFrame con scores de 6 emociones para cada review
-
-    Nota:
-        Los estudiantes deben:
-        - Cargar modelo BERT (transformers library)
-        - Hacer inference en cada review (puede ser lento!)
-        - Retornar dataframe con columnas: joy, sadness, fear, surprise, anger, disgust
-        - Considerar batching para optimizar
-
-    Ejemplo esperado:
-        review_text                          joy  sadness  fear  ...
-        "This book changed my life!"        0.9   0.1    0.0
-        "I couldn't finish it"              0.2   0.8    0.3
+    Aplica BERT para detectar emociones.
     """
-    # TODO: Implementar BERT inference
-    # Sugerencia: from transformers import pipeline
-    # classifier = pipeline("zero-shot-classification")
-    # Para cada review, clasificar en las 6 emociones
-    pass
+
+    classifier = pipeline(
+        "zero-shot-classification",
+        model="facebook/bart-large-mnli"
+    )
+
+    results = []
+
+    # Limitar reviews para pruebas iniciales
+    for review in reviews.head(5):
+
+        if (
+            not isinstance(review, str)
+            or len(review.strip()) == 0
+        ):
+            continue
+
+        result = classifier(
+            review,
+            candidate_labels=EMOTIONS
+        )
+
+        emotion_scores = dict(
+            zip(
+                result["labels"],
+                result["scores"]
+            )
+        )
+
+        results.append(emotion_scores)
+
+    return pd.DataFrame(results)
 
 
-def aggregate_emotion_scores(emotion_df: pd.DataFrame) -> Dict[str, float]:
+def aggregate_emotion_scores(
+    emotion_df: pd.DataFrame
+) -> Dict[str, float]:
     """
-    Agrega los scores de emociones de todas las reviews en un perfil único.
-
-    Args:
-        emotion_df: DataFrame con scores de emociones por review
-
-    Returns:
-        Dict con promedio de cada emoción
-
-    Ejemplo:
-        {
-            "joy": 0.75,
-            "sadness": 0.25,
-            ...
-            "average_sentiment": 0.65
-        }
-
-    Nota:
-        Los estudiantes pueden mejorar:
-        - Weighted average (dar más peso a reviews con más votos)
-        - Mediana en lugar de media (más robusta a outliers)
-        - Standard deviation (qué tan consistentes son los sentimientos)
+    Agrega scores emocionales.
     """
-    # TODO: Implementar agregación
-    # Sugerencia: emotion_df.mean()
-    pass
+
+    if emotion_df.empty:
+        raise ValueError(
+            "No emotion scores available"
+        )
+
+    profile = emotion_df[EMOTIONS].mean().to_dict()
+
+    profile["average_sentiment"] = round(
+        sum(profile.values()) / len(EMOTIONS),
+        4
+    )
+
+    return profile
 
 
 # ============================================
 # FUNCIÓN PRINCIPAL
 # ============================================
-
-def analyze_sentiment(book_title: str) -> Dict[str, float]:
+def analyze_sentiment(
+    book_title: str
+) -> Dict[str, float]:
     """
-    Analiza qué emociones genera un libro.
-
-    Flujo:
-    1. Buscar las reviews del libro (pueden ser 10 o 200, depende)
-    2. Pasar cada una por BERT (LENTO)
-    3. Promediar los 6 scores emocionales
-    4. Retornar perfil único del libro
-
-    Args:
-        book_title: Título exacto del libro
-
-    Returns:
-        Dict con 6 emociones + promedio. Ejemplo:
-        {
-            "joy": 0.75,
-            "sadness": 0.2,
-            "fear": 0.1,
-            "surprise": 0.65,
-            "anger": 0.05,
-            "disgust": 0.08,
-            "average_sentiment": 0.64
-        }
-
-    Raises:
-        ValueError: "The Midnight Library" no existe o tiene <10 reviews
-        Exception: BERT explota (GPU sin memoria, model no cargado, etc.)
-
-    ⚠️ ADVERTENCIAS:
-    - BERT tarda 1-2 segundos POR REVIEW
-    - 200 reviews = 3-6 MINUTOS (sin caché)
-    - Así que: CACHEA TODO con cache_manager.py
-    - Si no cacheas, tu demo tardará 10 minutos en cargar
-
-    💡 CONSEJOS:
-    1. Primero: load_dataset() → entiende qué columnas tienes
-    2. Prueba con 5 reviews solo, no hagas 200 de golpe
-    3. print() es tu amigo. Verás dónde se cuelga
-    4. Try/except para reviews que rompen BERT
-    5. Si BERT falla en medio, cachea lo que tengas + continúa
-
-    🧠 TIPS TÉCNICOS:
-    - Usa transformers.pipeline("zero-shot-classification")
-    - Batch 5-10 reviews a la vez (más rápido que una por una)
-    - Considera quantization o quantized models si tienes tiempo
-    - GPU es 10x más rápido que CPU (si tienes)
+    Analiza emociones de un libro usando semi-cache CSV.
     """
-    # TODO: USTEDES IMPLEMENTAN ESTO
-    print(f"[TODO] Analizando sentimientos de '{book_title}'")
 
-    # Estructura esperada:
-    # 1. reviews = load_book_reviews(book_title)
-    # 2. if len(reviews) < 10: raise ValueError("Not enough reviews")
-    # 3. emotion_scores = apply_bert_to_reviews(reviews['text'])
-    # 4. profile = aggregate_emotion_scores(emotion_scores)
-    # 5. return profile
+    cache_path = "emotion_profiles_30_books.csv"
 
-    # PLACEHOLDER - Reemplazar con código real
-    return {
-        "joy": 0.75,
-        "sadness": 0.2,
-        "fear": 0.1,
-        "surprise": 0.65,
-        "anger": 0.05,
-        "disgust": 0.08,
-        "average_sentiment": 0.64
-    }
+    # ============================================
+    # 1. Intentar cargar desde cache
+    # ============================================
 
+    if os.path.exists(cache_path):
+
+        cache_df = pd.read_csv(cache_path)
+
+        cached_book = cache_df[
+            cache_df["book_title"].str.lower()
+            == book_title.lower()
+        ]
+
+        if not cached_book.empty:
+
+            print(f"[CACHE] Perfil encontrado para '{book_title}'")
+
+            row = cached_book.iloc[0]
+
+            return {
+                "joy": row["joy"],
+                "sadness": row["sadness"],
+                "fear": row["fear"],
+                "surprise": row["surprise"],
+                "anger": row["anger"],
+                "disgust": row["disgust"],
+                "average_sentiment": row["average_sentiment"]
+            }
+
+    # ============================================
+    # 2. Ejecutar BERT si no existe cache
+    # ============================================
+
+    print(f"[BERT] Analizando '{book_title}'")
+
+    reviews = load_book_reviews(book_title)
+
+    if len(reviews) < 1:
+        raise ValueError(
+            f"No hay suficientes reviews para: {book_title}"
+        )
+
+    emotion_scores = apply_bert_to_reviews(
+        reviews["review_content"]
+    )
+
+    profile = aggregate_emotion_scores(
+        emotion_scores
+    )
+
+    return profile
+
+def analyze_first_60_books() -> pd.DataFrame:
+    """
+    Analiza sentimientos de los primeros 60 libros del CSV limpio.
+    """
+
+    books_path = os.path.join(DATA_PATH, "books_clean.csv")
+    books_df = pd.read_csv(books_path)
+
+    results = []
+
+    for index, row in books_df.head(60).iterrows():
+        title = row["book_title"]
+
+        print(f"\n[{index + 1}/60] Analizando: {title}")
+
+        try:
+            profile = analyze_sentiment(title)
+
+            result = {
+                "book_id": row["book_id"],
+                "book_title": title,
+                "author": row["author"],
+                **profile
+            }
+
+            results.append(result)
+
+        except Exception as e:
+            print(f"Error con '{title}': {e}")
+
+    emotion_profiles = pd.DataFrame(results)
+
+    emotion_profiles.to_csv(
+        "emotion_profiles_60_books.csv",
+        index=False
+    )
+
+    print("\nCSV generado: emotion_profiles_60_books.csv")
+
+    return emotion_profiles
 
 # ============================================
 # DEBUGGING / TESTING
 # ============================================
 
 if __name__ == "__main__":
-    # Test local
-    result = analyze_sentiment("The Midnight Library")
-    print("Perfil emocional:", result)
+    profiles = analyze_first_60_books()
 
-    # Deberías ver algo como:
-    # {
-    #     "joy": 0.75,
-    #     "sadness": 0.25,
-    #     ...
-    # }
+    print("\nPerfiles generados:")
+    print(profiles.head())
