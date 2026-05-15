@@ -45,6 +45,15 @@ REVIEWS_DB = os.path.join(ARCHIVE_PATH, 'book_reviews.db')
 # ============================================
 # FUNCIONES HELPER
 # ============================================
+
+def is_english(text: str) -> bool:
+    if not isinstance(text, str) or len(text.strip()) < 5:
+        return False
+    try:
+        return detect(text) == "en"
+    except LangDetectException:
+        return False
+
 def count_non_english_reviews(
     reviews_df: pd.DataFrame,
     text_column: str = "review_content"
@@ -60,6 +69,7 @@ def count_non_english_reviews(
             "non_english_percentage": float
         }
     """
+    
 
     english_count = 0
     non_english_count = 0
@@ -94,6 +104,7 @@ def count_non_english_reviews(
         "non_english_reviews": non_english_count,
         "non_english_percentage": percentage
     }
+    
 def get_unique_filename(base_name: str) -> str:
     """
     Genera un nombre de archivo único para evitar sobreescribir CSVs.
@@ -345,7 +356,10 @@ def preprocess_reviews(
 
     # Limpiar texto
     df["review_content"] = df["review_content"].apply(clean_text)
-
+    
+    # Validar idioma inglés
+    df = df[df["review_content"].apply(is_english)]
+    
     # Validar longitud mínima
     df = df[df["review_content"].apply(lambda text: validate_review(text, min_review_length))]
 
