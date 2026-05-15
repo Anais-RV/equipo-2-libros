@@ -33,6 +33,8 @@ import os
 from typing import Tuple
 import re
 from langdetect import detect, LangDetectException
+from langdetect import DetectorFactory          
+DetectorFactory.seed = 0 
 # ============================================
 # CONFIGURACIÓN
 # ============================================
