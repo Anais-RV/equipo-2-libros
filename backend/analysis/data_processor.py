@@ -32,7 +32,7 @@ import sqlite3
 import os
 from typing import Tuple
 import re
-
+from langdetect import detect, LangDetectException
 # ============================================
 # CONFIGURACIÓN
 # ============================================
@@ -45,6 +45,77 @@ REVIEWS_DB = os.path.join(ARCHIVE_PATH, 'book_reviews.db')
 # ============================================
 # FUNCIONES HELPER
 # ============================================
+def count_non_english_reviews(
+    reviews_df: pd.DataFrame,
+    text_column: str = "review_content"
+) -> dict:
+    """
+    Cuenta cuántas reviews NO están en inglés.
+
+    Returns:
+        {
+            "total_reviews": int,
+            "english_reviews": int,
+            "non_english_reviews": int,
+            "non_english_percentage": float
+        }
+    """
+
+    english_count = 0
+    non_english_count = 0
+
+    for text in reviews_df[text_column]:
+
+        if not isinstance(text, str) or len(text.strip()) < 5:
+            continue
+
+        try:
+            lang = detect(text)
+
+            if lang == "en":
+                english_count += 1
+            else:
+                non_english_count += 1
+
+        except LangDetectException:
+            # Textos raros/vacíos
+            continue
+
+    total = english_count + non_english_count
+
+    percentage = (
+        round((non_english_count / total) * 100, 2)
+        if total > 0 else 0
+    )
+
+    return {
+        "total_reviews": total,
+        "english_reviews": english_count,
+        "non_english_reviews": non_english_count,
+        "non_english_percentage": percentage
+    }
+def get_unique_filename(base_name: str) -> str:
+    """
+    Genera un nombre de archivo único para evitar sobreescribir CSVs.
+
+    Ejemplo:
+    - books_clean.csv
+    - books_clean_1.csv
+    - books_clean_2.csv
+    """
+    if not os.path.exists(base_name):
+        return base_name
+
+    name, ext = os.path.splitext(base_name)
+    counter = 1
+
+    while True:
+        new_name = f"{name}_{counter}{ext}"
+
+        if not os.path.exists(new_name):
+            return new_name
+
+        counter += 1
 
 def clean_text(text: str) -> str:
     """
@@ -215,7 +286,14 @@ def load_dataset() -> Tuple[pd.DataFrame, pd.DataFrame]:
     books = pd.read_csv(BOOKS_CSV)
     # Convertir dato a datatime
     books["publication_year"] = books["publication_info"].apply(extract_publication_year).astype("Int64")
+    # Guardar CSV SIN sobreescribir
+    books_filename = get_unique_filename("books_clean.csv")
+    books.to_csv(
+        books_filename,
+        index=False
+    )
 
+    print(f"Books guardado en: {books_filename}")
 
     # Cargar reviews desde SQLite
     conn = sqlite3.connect(REVIEWS_DB)
@@ -330,6 +408,10 @@ if __name__ == "__main__":
 
     print("\nLimpiando reviews...")
     reviews_clean = preprocess_reviews(reviews)
+    reviews_filename = get_unique_filename("reviews_clean.csv")
+    reviews_clean.to_csv(reviews_filename,index=False)
+
+    print(f"Reviews guardado en: {reviews_filename}")
     print("\nReview rating limpio:")
     print(reviews_clean["review_rating"].head(10))
     print("Tipo:", reviews_clean["review_rating"].dtype)
@@ -339,3 +421,6 @@ if __name__ == "__main__":
     print("\nEstadísticas...")
     stats = get_book_stats(books, reviews_clean)
     print(stats)
+    print("\nDetectando idiomas...")
+    language_stats = count_non_english_reviews(reviews_clean)
+    print(language_stats)
