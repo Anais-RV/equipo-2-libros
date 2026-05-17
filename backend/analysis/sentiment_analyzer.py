@@ -30,10 +30,13 @@ Retorna un dict como este:
     "average_sentiment": 0.64
 }
 """
-
-import pandas as pd
-from typing import Dict
 import os
+import re
+import pandas as pd
+import numpy as np
+from typing import Dict, List, Tuple
+from transformers import pipeline
+from sentence_transformers import SentenceTransformer
 
 # ============================================
 # CONFIGURACIÓN
