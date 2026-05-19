@@ -13,6 +13,12 @@ Los estudiantes implementan funciones en:
 
 El frontend (React) consumirá: POST /recommend
 """
+# ============================================
+# CONFIGURACIÓN MOTOR IA
+# ============================================
+
+USE_CLASSIC_RECOMMENDER = True
+
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,9 +26,17 @@ from pydantic import BaseModel
 import logging
 
 # Importar funciones de analysis
-from analysis.sentiment_analyzer import analyze_sentiment
-from analysis.recommender import find_similar_books
 from analysis.cache_manager import CacheManager, cache_sentiment
+
+# Cambiar motor automáticamente
+
+if USE_CLASSIC_RECOMMENDER:
+    from analysis.sentiment_analyzer_classic import analyze_sentiment
+    from analysis.recommender_classic import find_similar_books
+else:
+    from analysis.sentiment_analyzer_bert import analyze_sentiment
+    from analysis.recommender_bert import find_similar_books
+
 
 # ============================================
 # LOGGING
@@ -157,8 +171,11 @@ def get_recommendations(book: BookInput):
             cache.save_sentiment_profile(book.title, sentiment_profile)
 
         # Paso 3: Encontrar libros similares
-        logger.info("Buscando libros similares...")
-        recommendations = find_similar_books(sentiment_profile, num_recommendations=5)
+            logger.info("Buscando libros similares...")
+
+        result = find_similar_books(book.title,num_recommendations=5)
+
+        recommendations = result["libros_similares"]
 
         # Paso 4: Armar respuesta
         response = RecommendationResponse(

@@ -4,14 +4,14 @@
 Módulos del backend para análisis ML y recomendaciones.
 
 Estructura:
-- sentiment_analyzer.py  → BERT + análisis de emociones
-- recommender.py        → K-means + cosine similarity
+- sentiment_analyzer_bert.py  → BERT + análisis de emociones
+- recommender_bert.py        → BERT + cosine similarity
 - data_processor.py     → Carga y limpieza de datos
 - cache_manager.py      → Persistencia de resultados
 """
 
-from .sentiment_analyzer import analyze_sentiment
-from .recommender import find_similar_books
+from .sentiment_analyzer_bert import analyze_sentiment
+from .recommender_bert import find_similar_books
 from .data_processor import load_dataset, preprocess_reviews
 from .cache_manager import CacheManager
 
