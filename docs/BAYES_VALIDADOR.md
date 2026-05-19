@@ -1,4 +1,4 @@
-# 🦄 Bayes: Tu Segundo Cerebro (Cuando BERT No Confía Ni En Él Mismo)
+﻿# 🦄 Bayes: Tu Segundo Cerebro (Cuando BERT No Confía Ni En Él Mismo)
 
 ## ⚠️ **IMPORTANTE: Esto es un Plus, NO es Obligatorio**
 
