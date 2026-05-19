@@ -1,37 +1,26 @@
 """
-🦄 Recommender - Motor de "libros parecidos"
+🦄 Recommender - Motor de "libros parecidos" y Sagas literarias
 
 Una vez que sabes qué emociones genera un libro,
 busca otros 5 libros que generen CASI LAS MISMAS emociones.
 
 Algoritmo básico:
-1. Cargar perfiles de TODOS los 16K libros (pre-calculados)
+1. Cargar perfiles de los libros (pre-calculados desde el caché)
 2. Calcular qué tan parecido es cada uno al que buscas (cosine similarity)
-3. Retornar los TOP 5 más parecidos
-
-Cosine similarity:
-- Compara dos vectores de 6 dimensiones (las 6 emociones)
-- Retorna 0 (nada parecido) a 1 (idéntico)
-- Es rápido (milisegundos)
-
-⚠️ IMPORTANTE:
-No puedes calcular TODOS los perfiles on-demand.
-Son 16K libros × 3-6 minutos cada uno = MESES.
-
-SOLUCIÓN:
-1. Pre-calcula los perfiles (batch job, una sola vez)
-2. Guarda en caché con cache_manager
-3. Carga desde caché (rápido) cuando buscas
-
-El frontend hace: "Busco X" → API carga caché en <100ms → retorna TOP 5
+3. Retornar los TOP 5 más parecidos e inyectar lógica de continuidad de sagas.
 """
 
+from sentiment_analyzer import analyze_sentiment
 import pandas as pd
 import numpy as np
 from typing import List, Dict
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import KMeans
 import os
+import json
+
+# Importamos tu CacheManager para conectar las piezas de forma directa
+from cache_manager import CacheManager
 
 # ============================================
 # CONFIGURACIÓN
@@ -45,54 +34,39 @@ TOP_N = 5
 # FUNCIONES HELPER
 # ============================================
 
+
 def load_emotion_profiles() -> pd.DataFrame:
     """
-    Carga perfiles emocionales pre-calculados de TODOS los libros.
-
-    Returns:
-        DataFrame con columnas: [book_id, title, author, joy, sadness, fear, surprise, anger, disgust]
-
-    Nota importante:
-        Estos perfiles deberían estar PRE-CALCULADOS (caché).
-        Si no existen, la alternativa es calcularlos on-demand,
-        pero eso es LENTO (sería analizar 16K libros = horas).
-
-        Solución recomendada:
-        1. Calcularlos una vez (batch job)
-        2. Guardarlos en CSV/SQLite
-        3. Cargarlos aquí
-
-    TODO para estudiantes:
-        - Crear script para pre-calcular perfiles
-        - O implementar caché en cache_manager.py
+    Carga perfiles emocionales desde el caché binario (.pkl).
+    Si no existe, busca el CSV de perfiles dentro de la carpeta cache.
     """
-    # TODO: Implementar carga de perfiles
-    # Sugerencia: pd.read_csv(f"{DATA_PATH}/emotion_profiles.csv")
-    # O consultar base de datos: sqlite3, etc.
-    pass
+    cache = CacheManager()
+    all_profiles = cache.load_emotion_profiles()
+    
+    # Si el archivo .pkl no existe por algún motivo, buscamos el CSV de perfiles en la carpeta cache
+    if all_profiles is None:
+        CACHE_DIR = os.path.join(os.path.dirname(__file__), '../../cache')
+        csv_path = os.path.join(CACHE_DIR, "emotion_profiles.csv")
+        
+        print(f"⚠️ [ADVERTENCIA] No se encontró el archivo pkl. Intentando cargar desde {csv_path}...")
+        
+        if os.path.exists(csv_path):
+            all_profiles = pd.read_csv(csv_path)
+        else:
+            raise FileNotFoundError("❌ Error crítico: No hay perfiles calculados en el caché. Corre primero el analizador.")
+            
+    return all_profiles
 
 
 def normalize_profile(profile: Dict[str, float]) -> np.ndarray:
     """
-    Normaliza un perfil emocional para cosine similarity.
-
-    Args:
-        profile: Dict con 6 emociones
-
-    Returns:
-        Array normalizado (tamaño 1)
-
-    Nota:
-        Cosine similarity requiere vectores normalizados.
-        sklearn.preprocessing.normalize() hace esto automáticamente.
+    Normaliza un perfil emocional para cosine similarity garantizando un array bidimensional.
     """
     vector = np.array([profile[emotion] for emotion in EMOTIONS])
-    # Normalizar: dividir por la magnitud
     magnitude = np.linalg.norm(vector)
     if magnitude == 0:
-        return vector
-    return vector / magnitude
-
+        return vector.reshape(1, -1)
+    return (vector / magnitude).reshape(1, -1)
 
 def find_similar_profiles(
     input_profile: Dict[str, float],
@@ -100,222 +74,232 @@ def find_similar_profiles(
     method: str = "cosine"
 ) -> np.ndarray:
     """
-    Calcula similitud emocional entre un perfil y todos los demás.
-
-    Args:
-        input_profile: Perfil emocional del libro buscado
-        all_profiles: DataFrame con perfiles de todos los libros
-        method: "cosine" o "euclidean"
-
-    Returns:
-        Array de similitudes (0 a 1)
-
-    Algoritmo:
-        Cosine similarity = cos(θ) entre dos vectores
-        - 1.0 = idéntico
-        - 0.0 = perpendicular (sin relación)
-        - -1.0 = opuesto
-
-    Nota:
-        Los estudiantes pueden mejorar:
-        - Usar Euclidean distance (es.sqrt de diferencias)
-        - Weighted similarity (dar más peso a ciertas emociones)
-        - Manhattan distance
+    Calcula similitud emocional entre el libro objetivo
+    y todos los libros del catálogo.
     """
-    # TODO: Implementar similitud
-    # Sugerencia: from sklearn.metrics.pairwise import cosine_similarity
-    # input_vector = normalize_profile(input_profile)
-    # similarities = cosine_similarity([input_vector], all_vectors)[0]
-    pass
+
+    input_vector = normalize_profile(input_profile)
+
+    all_vectors = all_profiles[EMOTIONS].values
+
+    if method == "cosine":
+
+        similarities = cosine_similarity(
+            input_vector,
+            all_vectors
+        )[0]
+
+    else:
+
+        distances = np.linalg.norm(
+            all_vectors - input_vector,
+            axis=1
+        )
+
+        similarities = 1 / (1 + distances)
+
+    return similarities
 
 
 def apply_clustering(
     all_profiles: pd.DataFrame,
-    n_clusters: int = 10
+    n_clusters: int = 5
 ) -> KMeans:
     """
-    Agrupa libros similares en clusters (OPCIONAL).
-
-    Args:
-        all_profiles: DataFrame de perfiles
-        n_clusters: Número de clusters
-
-    Returns:
-        Modelo KMeans entrenado
-
-    Nota:
-        Esto es OPCIONAL pero ayuda para:
-        - Verificar que el clustering tiene sentido
-        - Agrupar por "tipo" de libro (triste, alegre, etc.)
-        - Futuro: filtros por cluster
-
-    Mejor usar después de tener perfiles funcionales.
+    Agrupa los libros analizados en clusters basados en su atmósfera emocional predominante.
     """
-    # TODO: Implementar clustering
-    # Sugerencia: from sklearn.cluster import KMeans
-    # vectors = all_profiles[EMOTIONS].values
-    # kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-    # kmeans.fit(vectors)
-    pass
+    vectors = all_profiles[EMOTIONS].values
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    kmeans.fit(vectors)
+    return kmeans
 
 
 def rank_recommendations(
     similarities: np.ndarray,
     book_data: pd.DataFrame,
+    target_title: str,
     top_n: int = 5
 ) -> List[Dict]:
     """
-    Ordena libros por similitud y retorna TOP N.
-
-    Args:
-        similarities: Array de similitudes (una por libro)
-        book_data: DataFrame con info de libros (title, author, etc.)
-        top_n: Número de recomendaciones a retornar
-
-    Returns:
-        List of dicts con [title, author, sentiment_score, reason]
-
-    Nota:
-        Los estudiantes pueden mejorar:
-        - Filtrar por popularity (no recomendar libros obscuros)
-        - Diversidad (no recomendar 5 del mismo autor)
-        - Rank múltiple (top N de cada cluster)
+    Ordena los libros por afinidad emocional, descarta el libro original y formatea la salida.
     """
-    # TODO: Implementar ranking
-    # Sugerencia:
-    # 1. book_data['similarity'] = similarities
-    # 2. book_data.sort_values('similarity', ascending=False)
-    # 3. Retornar top_n
-    pass
+    df_temp = book_data.copy()
+    df_temp['similarity'] = similarities
+    
+    # Filtrar para no recomendar el mismo libro que el usuario acaba de leer
+    df_temp = df_temp[df_temp['book_title'].str.lower() != target_title.lower()]
+    
+    # Ordenar de mayor a menor similitud
+    df_ranked = df_temp.sort_values(by='similarity', ascending=False).head(top_n)
+    
+    recommendations = []
+    for _, row in df_ranked.iterrows():
+        # Lógica de "motivo" dinámico según la emoción más fuerte detectada por Hartmann
+        primary_emotion = row[EMOTIONS].astype(float).idxmax()
+        
+        recommendations.append({
+            "title": row['book_title'],
+            "author": row['author'],
+            "sentiment_score": round(float(row['similarity']), 2),
+            "reason": f"Muestra una atmósfera similar con un fuerte matiz de '{primary_emotion}'."
+        })
+        
+    return recommendations
+
+
+def check_saga_continuity(target_title: str, all_profiles: pd.DataFrame) -> List[Dict]:
+    """
+    Verifica si el libro pertenece a una saga y extrae los volúmenes posteriores correlativos.
+    """
+    continuidad = []
+    book_match = all_profiles[all_profiles['book_title'].str.lower() == target_title.lower()]
+    
+    if not book_match.empty:
+        row = book_match.iloc[0]
+        saga_name = row.get('saga_name')
+        volumen_actual = row.get('volume_number', 1)
+        
+        # Si tiene una saga asignada en los metadatos
+        if pd.notna(saga_name) and saga_name != "":
+            # Buscamos los libros hermanos de la misma saga que vayan después en el orden
+            siguientes = all_profiles[
+                (all_profiles['saga_name'] == saga_name) & 
+                (all_profiles['volume_number'] > volumen_actual)
+            ].sort_values(by='volume_number')
+            
+            for _, next_row in siguientes.iterrows():
+                continuidad.append({
+                    "title": next_row['book_title'],
+                    "author": next_row['author'],
+                    "type": "Continuidad de Saga",
+                    "reason": f"Es el volumen {int(next_row['volume_number'])} de la saga '{saga_name}'."
+                })
+    return continuidad
 
 
 # ============================================
-# FUNCIÓN PRINCIPAL
+# FUNCIÓN PRINCIPAL HÍBRIDA
 # ============================================
 
 def find_similar_books(
-    sentiment_profile: Dict[str, float],
+    book_title: str,
     num_recommendations: int = 5
-) -> List[Dict]:
+) -> Dict[str, List[Dict]]:
     """
-    Encuentra los TOP 5 libros más parecidos emocionalmente.
+    Encuentra libros similares usando perfiles emocionales.
+    Si el libro no está cacheado, llama automáticamente
+    a sentiment_analyzer.analyze_sentiment().
+    """
 
-    Entrada: Un perfil emocional (ej: {joy: 0.75, sadness: 0.2, ...})
-    Salida: Los 5 libros con perfil más parecido
+    print(f"🔮 [MOTOR] Generando recomendaciones para '{book_title}'")
 
-    Flujo:
-    1. Cargar la base de datos de perfiles (caché)
-    2. Convertir el perfil de entrada a vector (6 números)
-    3. Calcular distancia coseno vs. todos los 16K libros
-    4. Ordenar y retornar TOP 5
+    all_profiles = load_emotion_profiles()
 
-    Args:
-        sentiment_profile: Dict como este:
-            {
-                "joy": 0.75,
-                "sadness": 0.2,
-                "fear": 0.1,
-                "surprise": 0.65,
-                "anger": 0.05,
-                "disgust": 0.08
+    # ============================================
+    # 1. Buscar libro en caché
+    # ============================================
+
+    target_book = all_profiles[
+        all_profiles['book_title'].str.lower()
+        == book_title.lower()
+    ]
+
+    # ============================================
+    # 2. Si NO existe → analizar automáticamente
+    # ============================================
+
+    if target_book.empty:
+
+        print(f"[ANALYZER] '{book_title}' no está cacheado.")
+        print("[ANALYZER] Ejecutando sentiment_analyzer...")
+
+        try:
+            new_profile = analyze_sentiment(book_title)
+
+            # Recargar caché actualizado
+            all_profiles = load_emotion_profiles()
+
+            target_book = all_profiles[
+                all_profiles['book_title'].str.lower()
+                == book_title.lower()
+            ]
+
+        except Exception as e:
+            print(f"❌ Error analizando '{book_title}': {e}")
+
+            return {
+                "continuidad_saga": [],
+                "libros_similares": []
             }
-        num_recommendations: Cuántos retornar (default 5)
 
-    Returns:
-        List de dicts:
-        [
-            {
-                "title": "Piranesi",
-                "author": "Susanna Clarke",
-                "sentiment_score": 0.82,
-                "reason": "Similar emotional profile"
-            },
-            ...
-        ]
+    # ============================================
+    # 3. Obtener perfil emocional
+    # ============================================
 
-    ⚠️ CRÍTICO:
-    - Necesitas perfiles pre-calculados para TODOS los libros
-    - Si no los tienes, esto tardará HORAS
-    - Solución: Batch job en Semana 3, guarda en caché, carga aquí
+    sentiment_profile = target_book.iloc[0][EMOTIONS].to_dict()
 
-    💡 IMPLEMENTACIÓN PASO A PASO:
-    1. load_emotion_profiles() → carga del caché (rápido)
-    2. normalize_profile() → convierte dict a vector normalizado
-    3. find_similar_profiles() → cosine_similarity
-    4. rank_recommendations() → ordena y retorna TOP 5
+    # ============================================
+    # 4. Buscar continuidad de saga
+    # ============================================
 
-    🧠 DEBUGGING:
-    - print(f"Perfiles cargados: {all_profiles.shape}")
-    - print(f"Similitudes: {similarities[:10]}")  # Deberían ser 0-1
-    - print(f"Top 5 scores: {np.argsort(similarities)[-5:]}")
-    - Si todos son ~0.5, algo está roto
+    saga_recommendations = check_saga_continuity(
+        book_title,
+        all_profiles
+    )
 
-    🎯 CHECKS FINALES:
-    - ¿El TOP 1 tiene sense? (debería ser el libro más parecido)
-    - ¿Los scores están entre 0 y 1? (si no, normalizate mal)
-    - ¿Tardó menos de 100ms? (si tarda más, caché está roto)
-    """
-    # TODO: USTEDES IMPLEMENTAN ESTO
-    print(f"[TODO] Encontrando libros similares...")
+    # ============================================
+    # 5. Calcular similaridad
+    # ============================================
 
-    # Estructura esperada:
-    # 1. all_profiles = load_emotion_profiles()
-    # 2. input_vector = normalize_profile(sentiment_profile)
-    # 3. similarities = find_similar_profiles(sentiment_profile, all_profiles)
-    # 4. recommendations = rank_recommendations(similarities, all_profiles, num_recommendations)
-    # 5. return recommendations
+    similarities = find_similar_profiles(
+        sentiment_profile,
+        all_profiles,
+        method="cosine"
+    )
 
-    # PLACEHOLDER - Reemplazar con código real
-    return [
-        {
-            "title": "Piranesi",
-            "author": "Susanna Clarke",
-            "sentiment_score": 0.82,
-            "reason": "Alto impacto emocional similar"
-        },
-        {
-            "title": "The House in the Cerulean Sea",
-            "author": "TJ Klune",
-            "sentiment_score": 0.78,
-            "reason": "Mistura de alegría y contemplación"
-        },
-        {
-            "title": "The Invisible Life of Addie LaRue",
-            "author": "V.E. Schwab",
-            "sentiment_score": 0.75,
-            "reason": "Genera sorpresa y nostalgia"
-        },
-        {
-            "title": "Circe",
-            "author": "Madeline Miller",
-            "sentiment_score": 0.71,
-            "reason": "Reflexión y transformación personal"
-        },
-        {
-            "title": "Mexican Gothic",
-            "author": "Silvia Moreno-Garcia",
-            "sentiment_score": 0.68,
-            "reason": "Suspenso con toques de misterio"
-        },
-    ][:num_recommendations]
+    # ============================================
+    # 6. Obtener TOP similares
+    # ============================================
 
+    similar_books = rank_recommendations(
+        similarities,
+        all_profiles,
+        target_title=book_title,
+        top_n=num_recommendations
+    )
+
+    # ============================================
+    # 7. Resultado final
+    # ============================================
+
+    return {
+        "continuidad_saga": saga_recommendations,
+        "libros_similares": similar_books
+    }
 
 # ============================================
 # DEBUGGING / TESTING
 # ============================================
 
 if __name__ == "__main__":
-    # Test local
-    test_profile = {
-        "joy": 0.75,
-        "sadness": 0.2,
-        "fear": 0.1,
-        "surprise": 0.65,
-        "anger": 0.05,
-        "disgust": 0.08,
-    }
-
-    recommendations = find_similar_books(test_profile, num_recommendations=5)
-    print("Recomendaciones:", recommendations)
-
-    # Deberías ver 5 libros ordenados por similitud
+    # Generamos un entorno de test de simulación con datos reales de tu caché
+    print("--- INICIANDO DIAGNÓSTICO DEL RECOMENDADOR ---")
+    
+    try:
+        # Prueba simulando que el usuario introduce el volumen 1 de Harry Potter
+        # (Asegúrate de escribir un título que ya esté procesado en tu JSON/PKL)
+        test_title = "The War of Art: Winning the Inner Creative Battle"  # Cambia esto por un título que tengas en tu caché
+        
+        resultados = find_similar_books(test_title, num_recommendations=3)
+        
+        print("\n📦 CONTINUIDAD DE LA SAGA DETECTADA:")
+        for b in resultados["continuidad_saga"]:
+            print(f" ➡️ {b['title']} ({b['reason']})")
+            
+        print("\n🎯 LIBROS RECOMENDADOS POR AFINIDAD EMOCIONAL (COSINE SIMILARITY):")
+        for b in resultados["libros_similares"]:
+            print(f" ➡️ {b['title']} - Coincidencia: {int(b['sentiment_score']*100)}% ({b['reason']})")
+            
+    except Exception as e:
+        print(f"❌ Error durante el test de integración: {e}")
+        print("Asegúrate de que el analizador haya guardado al menos un lote de perfiles primero.")
