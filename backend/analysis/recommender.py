@@ -10,7 +10,7 @@ Algoritmo básico:
 3. Retornar los TOP 5 más parecidos e inyectar lógica de continuidad de sagas.
 """
 
-from sentiment_analyzer import analyze_sentiment
+from .sentiment_analyzer import analyze_sentiment
 import pandas as pd
 import numpy as np
 from typing import List, Dict
@@ -20,7 +20,7 @@ import os
 import json
 
 # Importamos tu CacheManager para conectar las piezas de forma directa
-from cache_manager import CacheManager
+from .cache_manager import CacheManager
 
 # ============================================
 # CONFIGURACIÓN
