@@ -1,221 +1,253 @@
 """
-🦄 Sentiment Analyzer - El corazón del análisis
+🦄 Sentiment Analyzer - MODO TURBO v2
+Objetivo: 16k libros en ~2-3 horas en GPU.
 
-Aquí es donde pasa la magia (y el marron). BERT te va a analizar
-63K reviews buscando 6 emociones.
-
-ADVERTENCIA: BERT es lento. Muy lento. Como una tortuga en invierno.
-- 1 review = 1-2 segundos
-- 200 reviews = 3-6 minutos
-- No hagas esto on-demand o los usuarios se harán viejos esperando
-
-SOLUCIÓN: Cachear. Ver cache_manager.py.
-
-Emociones que detecta BERT:
-- joy (alegría)
-- sadness (tristeza)
-- fear (miedo)
-- surprise (sorpresa)
-- anger (ira)
-- disgust (repulsión)
-
-Retorna un dict como este:
-{
-    "joy": 0.75,
-    "sadness": 0.2,
-    "fear": 0.1,
-    "surprise": 0.65,
-    "anger": 0.05,
-    "disgust": 0.08,
-    "average_sentiment": 0.64
-}
+Cambios clave vs versión anterior:
+  1. Length bucketing → ordena textos por longitud antes de batchear (2-3× speedup)
+  2. fp16 → modelo en media precisión (2× speedup, sin pérdida apreciable)
+  3. truncation=True, max_length=128 → no se desperdicia cómputo en padding
+  4. Pre-indexado de reviews por book_id (groupby) → elimina bucle O(n²)
+  5. Checkpoints incrementales → si crashea no pierdes el trabajo
+  6. Comprobación explícita de CUDA al arrancar
 """
+
+import time
 import os
-import re
+from typing import Dict
+
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple
+import torch
 from transformers import pipeline
-from sentence_transformers import SentenceTransformer
 
 # ============================================
 # CONFIGURACIÓN
 # ============================================
 
-DATA_PATH = os.path.join(os.path.dirname(__file__), '../../data')
+DATA_PATH = os.path.join(os.path.dirname(__file__), '..', '..')
+CACHE_PATH = os.path.join(os.path.dirname(__file__), '../../emotion_profiles.csv')
+
 EMOTIONS = ['joy', 'sadness', 'fear', 'surprise', 'anger', 'disgust']
+MAX_REVIEWS = 35
+MAX_CHARS = 500
+MAX_TOKENS = 128         # antes era el default 512 → 4× menos cómputo
+BATCH_SIZE = 512         # subido de 256 (con fp16 cabe sin problema)
+SAVE_EVERY = 500         # checkpoint cada N libros procesados
 
 # ============================================
-# FUNCIONES HELPER
+# COMPROBACIÓN DE GPU
 # ============================================
 
-def load_book_reviews(book_title: str) -> pd.DataFrame:
-    """
-    Carga las reviews de un libro específico del dataset.
+print("=" * 60)
+print(f"CUDA disponible: {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    print(f"GPU: {torch.cuda.get_device_name(0)}")
+    print(f"VRAM total: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+    DEVICE = 0
+    DTYPE = torch.float16
+else:
+    print("⚠️  CORRIENDO EN CPU — esto NO llegará a 2-3h.")
+    print("    Mueve esto a Colab/Kaggle con GPU o no llegarás al objetivo.")
+    DEVICE = -1
+    DTYPE = torch.float32
+print("=" * 60 + "\n")
 
-    Args:
-        book_title: Título del libro a buscar
+# ============================================
+# CARGA DE MODELO Y DATOS
+# ============================================
 
-    Returns:
-        DataFrame con reviews del libro
+print("🚀 Cargando modelo (fp16)...")
+classifier = pipeline(
+    "text-classification",
+    model="j-hartmann/emotion-english-distilroberta-base",
+    top_k=None,
+    device=DEVICE,
+    torch_dtype=DTYPE,
+)
 
-    Nota:
-        Los estudiantes pueden mejorar:
-        - Búsqueda fuzzy (por si el título no es exacto)
-        - Case-insensitive search
-        - Búsqueda por autor también
-    """
-    # TODO: Implementar carga del dataset
-    # Sugerencia: Usar pandas.read_csv() o sqlite3
-    # df = pd.read_csv(f"{DATA_PATH}/Book_Details.csv")
-    # book_reviews = df[df['title'].str.lower() == book_title.lower()]
-    pass
+print("📚 Cargando libros...")
+ALL_BOOKS = pd.read_csv(os.path.join(DATA_PATH, "books_clean.csv"), encoding='latin-1')
+ALL_BOOKS['book_id'] = ALL_BOOKS['book_id'].astype(str)
 
+print("📝 Cargando reviews...")
+ALL_REVIEWS = pd.read_csv(
+    os.path.join(DATA_PATH, "reviews_clean.csv"),
+    encoding='latin-1',
+    on_bad_lines='skip',
+    engine='python',
+)
+ALL_REVIEWS['book_id'] = ALL_REVIEWS['book_id'].astype(str)
 
-def apply_bert_to_reviews(reviews: pd.Series) -> pd.DataFrame:
-    """
-    Aplica modelo BERT pre-entrenado para detectar emociones en cada review.
+# 🔑 PRE-INDEXAR reviews por book_id (groupby una sola vez)
+print("🔧 Indexando reviews por book_id...")
+REVIEWS_BY_BOOK = (
+    ALL_REVIEWS.dropna(subset=['review_content'])
+    .groupby('book_id')['review_content']
+    .apply(list)
+    .to_dict()
+)
 
-    Args:
-        reviews: Series de textos (reviews)
+print(f"✓ {len(ALL_BOOKS)} libros | {len(ALL_REVIEWS)} reviews | "
+      f"{len(REVIEWS_BY_BOOK)} libros con reviews\n")
 
-    Returns:
-        DataFrame con scores de 6 emociones para cada review
-
-    Nota:
-        Los estudiantes deben:
-        - Cargar modelo BERT (transformers library)
-        - Hacer inference en cada review (puede ser lento!)
-        - Retornar dataframe con columnas: joy, sadness, fear, surprise, anger, disgust
-        - Considerar batching para optimizar
-
-    Ejemplo esperado:
-        review_text                          joy  sadness  fear  ...
-        "This book changed my life!"        0.9   0.1    0.0
-        "I couldn't finish it"              0.2   0.8    0.3
-    """
-    # TODO: Implementar BERT inference
-    # Sugerencia: from transformers import pipeline
-    # classifier = pipeline("zero-shot-classification")
-    # Para cada review, clasificar en las 6 emociones
-    pass
-
-
-def aggregate_emotion_scores(emotion_df: pd.DataFrame) -> Dict[str, float]:
-    """
-    Agrega los scores de emociones de todas las reviews en un perfil único.
-
-    Args:
-        emotion_df: DataFrame con scores de emociones por review
-
-    Returns:
-        Dict con promedio de cada emoción
-
-    Ejemplo:
-        {
-            "joy": 0.75,
-            "sadness": 0.25,
-            ...
-            "average_sentiment": 0.65
-        }
-
-    Nota:
-        Los estudiantes pueden mejorar:
-        - Weighted average (dar más peso a reviews con más votos)
-        - Mediana en lugar de media (más robusta a outliers)
-        - Standard deviation (qué tan consistentes son los sentimientos)
-    """
-    # TODO: Implementar agregación
-    # Sugerencia: emotion_df.mean()
-    pass
+if os.path.exists(CACHE_PATH) and os.path.getsize(CACHE_PATH) > 0:
+    CACHE_DF = pd.read_csv(CACHE_PATH, encoding='latin-1')
+    print(f"✓ {len(CACHE_DF)} libros ya en caché\n")
+else:
+    CACHE_DF = pd.DataFrame()
 
 
 # ============================================
-# FUNCIÓN PRINCIPAL
+# HELPERS
 # ============================================
 
-def analyze_sentiment(book_title: str) -> Dict[str, float]:
-    """
-    Analiza qué emociones genera un libro.
+def aggregate_emotion_scores(scores_list: list) -> Dict[str, float]:
+    if not scores_list:
+        raise ValueError("No hay scores")
+    df = pd.DataFrame(scores_list)
+    if not all(e in df.columns for e in EMOTIONS):
+        raise ValueError("Faltan emociones en el output del modelo")
+    profile = df[EMOTIONS].mean().to_dict()
+    positive = profile['joy'] + profile['surprise']
+    negative = profile['sadness'] + profile['fear'] + profile['anger'] + profile['disgust']
+    profile['average_sentiment'] = round((positive - negative / 2) / 1.5, 4)
+    return {k: round(v, 4) for k, v in profile.items()}
 
-    Flujo:
-    1. Buscar las reviews del libro (pueden ser 10 o 200, depende)
-    2. Pasar cada una por BERT (LENTO)
-    3. Promediar los 6 scores emocionales
-    4. Retornar perfil único del libro
 
-    Args:
-        book_title: Título exacto del libro
-
-    Returns:
-        Dict con 6 emociones + promedio. Ejemplo:
-        {
-            "joy": 0.75,
-            "sadness": 0.2,
-            "fear": 0.1,
-            "surprise": 0.65,
-            "anger": 0.05,
-            "disgust": 0.08,
-            "average_sentiment": 0.64
-        }
-
-    Raises:
-        ValueError: "The Midnight Library" no existe o tiene <10 reviews
-        Exception: BERT explota (GPU sin memoria, model no cargado, etc.)
-
-    ⚠️ ADVERTENCIAS:
-    - BERT tarda 1-2 segundos POR REVIEW
-    - 200 reviews = 3-6 MINUTOS (sin caché)
-    - Así que: CACHEA TODO con cache_manager.py
-    - Si no cacheas, tu demo tardará 10 minutos en cargar
-
-    💡 CONSEJOS:
-    1. Primero: load_dataset() → entiende qué columnas tienes
-    2. Prueba con 5 reviews solo, no hagas 200 de golpe
-    3. print() es tu amigo. Verás dónde se cuelga
-    4. Try/except para reviews que rompen BERT
-    5. Si BERT falla en medio, cachea lo que tengas + continúa
-
-    🧠 TIPS TÉCNICOS:
-    - Usa transformers.pipeline("zero-shot-classification")
-    - Batch 5-10 reviews a la vez (más rápido que una por una)
-    - Considera quantization o quantized models si tienes tiempo
-    - GPU es 10x más rápido que CPU (si tienes)
-    """
-    # TODO: USTEDES IMPLEMENTAN ESTO
-    print(f"[TODO] Analizando sentimientos de '{book_title}'")
-
-    # Estructura esperada:
-    # 1. reviews = load_book_reviews(book_title)
-    # 2. if len(reviews) < 10: raise ValueError("Not enough reviews")
-    # 3. emotion_scores = apply_bert_to_reviews(reviews['text'])
-    # 4. profile = aggregate_emotion_scores(emotion_scores)
-    # 5. return profile
-
-    # PLACEHOLDER - Reemplazar con código real
-    return {
-        "joy": 0.75,
-        "sadness": 0.2,
-        "fear": 0.1,
-        "surprise": 0.65,
-        "anger": 0.05,
-        "disgust": 0.08,
-        "average_sentiment": 0.64
-    }
+def save_cache(rows: list):
+    """Guarda el caché combinando con lo que ya había."""
+    global CACHE_DF
+    if not rows:
+        return
+    new_df = pd.DataFrame(rows)
+    CACHE_DF = pd.concat([CACHE_DF, new_df], ignore_index=True) if not CACHE_DF.empty else new_df
+    CACHE_DF.to_csv(CACHE_PATH, index=False)
 
 
 # ============================================
-# DEBUGGING / TESTING
+# BATCH GLOBAL OPTIMIZADO
+# ============================================
+
+def analyze_first_n_books(n: int = 16000) -> pd.DataFrame:
+    global CACHE_DF
+
+    books = ALL_BOOKS.head(n)
+    cached_titles = (
+        set(CACHE_DF['book_title'].str.lower().tolist()) if not CACHE_DF.empty else set()
+    )
+    pending = books[~books['book_title'].str.lower().isin(cached_titles)]
+    print(f"📊 {len(cached_titles)} en caché | {len(pending)} pendientes\n")
+
+    if pending.empty:
+        print("Nada que procesar.")
+        return CACHE_DF
+
+    # ---------- 1) Recopilar textos usando el índice pre-calculado ----------
+    book_texts = {}      # title -> [texts]
+    book_meta = {}       # title -> (book_id, author)
+    for _, row in pending.iterrows():
+        title = row['book_title']
+        book_id = row['book_id']
+        reviews = REVIEWS_BY_BOOK.get(book_id, [])
+        texts = [
+            r[:MAX_CHARS]
+            for r in reviews[:MAX_REVIEWS]
+            if isinstance(r, str) and r.strip()
+        ]
+        if texts:
+            book_texts[title] = texts
+            book_meta[title] = (book_id, row.get('author', ''))
+
+    print(f"✓ {len(book_texts)} libros con reviews aptas")
+
+    # ---------- 2) Aplanar y ORDENAR POR LONGITUD (length bucketing) ----------
+    flat_texts = []
+    flat_titles = []
+    for title, texts in book_texts.items():
+        for t in texts:
+            flat_texts.append(t)
+            flat_titles.append(title)
+
+    # Ordenar índices por longitud del texto.
+    # Así cada batch contiene textos de longitud similar y el padding es mínimo.
+    order = sorted(range(len(flat_texts)), key=lambda i: len(flat_texts[i]))
+    sorted_texts = [flat_texts[i] for i in order]
+    sorted_titles = [flat_titles[i] for i in order]
+
+    total = len(sorted_texts)
+    print(f"📝 Total textos: {total} (ordenados por longitud)")
+    print(f"🔥 Inferencia: fp16, batch={BATCH_SIZE}, max_length={MAX_TOKENS}\n")
+
+    # ---------- 3) Inferencia ----------
+    all_outputs = [None] * total
+    start_t = time.time()
+    last_log = start_t
+
+    for i in range(0, total, BATCH_SIZE):
+        batch = sorted_texts[i:i + BATCH_SIZE]
+        outputs = classifier(
+            batch,
+            batch_size=len(batch),
+            truncation=True,
+            max_length=MAX_TOKENS,
+            padding=True,
+        )
+        for j, out in enumerate(outputs):
+            all_outputs[i + j] = out
+
+        # Log cada ~10 batches
+        if (i // BATCH_SIZE) % 10 == 0 and i > 0:
+            now = time.time()
+            elapsed = now - start_t
+            rate = i / elapsed
+            eta_min = (total - i) / rate / 60
+            print(f"  ⚡ {i:>7}/{total} | {rate:6.0f} txt/s | ETA: {eta_min:5.1f} min")
+
+    total_inf = time.time() - start_t
+    print(f"\n✓ Inferencia completada en {total_inf/60:.1f} min "
+          f"({total/total_inf:.0f} textos/s promedio)\n")
+
+    # ---------- 4) Reconstruir perfiles por libro ----------
+    print("📊 Calculando perfiles emocionales...")
+    book_scores = {title: [] for title in book_texts}
+    for idx, output in enumerate(all_outputs):
+        title = sorted_titles[idx]
+        scores = {item['label'].lower(): item['score'] for item in output}
+        book_scores[title].append(scores)
+
+    new_rows = []
+    for title, scores_list in book_scores.items():
+        try:
+            profile = aggregate_emotion_scores(scores_list)
+            book_id, author = book_meta[title]
+            new_rows.append({
+                'book_id': book_id,
+                'book_title': title,
+                'author': author,
+                **profile,
+            })
+        except Exception as e:
+            print(f"  ✗ Error en '{title}': {e}")
+            continue
+
+        # Checkpoint incremental
+        if len(new_rows) % SAVE_EVERY == 0:
+            save_cache(new_rows)
+            new_rows = []   # ya guardados, reseteamos buffer
+            print(f"  💾 Checkpoint guardado ({len(CACHE_DF)} libros totales)")
+
+    # Guardado final
+    save_cache(new_rows)
+    print(f"\n💾 Caché final: {len(CACHE_DF)} libros totales")
+    return CACHE_DF
+
+
+# ============================================
+# MAIN
 # ============================================
 
 if __name__ == "__main__":
-    # Test local
-    result = analyze_sentiment("The Midnight Library")
-    print("Perfil emocional:", result)
-
-    # Deberías ver algo como:
-    # {
-    #     "joy": 0.75,
-    #     "sadness": 0.25,
-    #     ...
-    # }
+    start = time.time()
+    analyze_first_n_books(16000)
+    elapsed = time.time() - start
+    print(f"\n⏱️  Tiempo total: {elapsed/3600:.2f}h ({elapsed/60:.1f} min)")
