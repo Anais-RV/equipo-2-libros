@@ -23,7 +23,14 @@ import logging
 from analysis.sentiment_analyzer import analyze_sentiment
 from analysis.recommender import find_similar_books
 from analysis.cache_manager import CacheManager, cache_sentiment
+cache = CacheManager()
 
+from auth import hash_password, verify_password, create_access_token, verify_token
+from database import get_db
+from schemas import UserRegister, UserLogin, TokenResponse, UserFeedback
+from models import User, UserReview
+from sqlalchemy.orm import Session
+from fastapi import Depends, Header
 # ============================================
 # LOGGING
 # ============================================
@@ -41,18 +48,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Permitir CORS para que frontend (localhost:3000) pueda acceder
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Cache manager
-cache = CacheManager()
-
 # ============================================
 # MODELOS (Request/Response)
 # ============================================
@@ -234,6 +236,60 @@ def clear_cache():
 # ============================================
 # MAIN
 # ============================================
+# ============================================================
+# AUTH ENDPOINTS 🦄
+# ============================================================
+
+def get_current_user(authorization: str = Header(..., alias="Authorization")) -> str:
+    """🦄 Middleware que comprueba el token en cada request protegido"""
+    try:
+        scheme, token = authorization.split()
+        if scheme.lower() != "bearer":
+            raise HTTPException(status_code=401)
+        email = verify_token(token)
+        if not email:
+            raise HTTPException(status_code=401)
+        return email
+    except:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+@app.post("/auth/register", response_model=TokenResponse)
+def register(user: UserRegister, db: Session = Depends(get_db)):
+    """🦄 Registra un usuario nuevo"""
+    if db.query(User).filter(User.email == user.email).first():
+        raise HTTPException(status_code=400, detail="Email ya registrado")
+    new_user = User(email=user.email, password_hash=hash_password(user.password))
+    db.add(new_user)
+    db.commit()
+    token = create_access_token({"sub": user.email})
+    return {"access_token": token, "token_type": "bearer"}
+
+@app.post("/auth/login", response_model=TokenResponse)
+def login(user: UserLogin, db: Session = Depends(get_db)):
+    """🦄 Loguea un usuario existente"""
+    db_user = db.query(User).filter(User.email == user.email).first()
+    if not db_user or not verify_password(user.password, db_user.password_hash):
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+    token = create_access_token({"sub": user.email})
+    return {"access_token": token, "token_type": "bearer"}
+
+@app.get("/user/me")
+def get_me(current_user: str = Depends(get_current_user)):
+    """🦄 Devuelve el email del usuario logueado"""
+    return {"email": current_user}
+
+@app.post("/user/feedback")
+def save_feedback(feedback: UserFeedback, current_user: str = Depends(get_current_user), db: Session = Depends(get_db)):
+    """🦄 Guarda una review de un usuario"""
+    review = UserReview(
+        user_email=current_user,
+        book_title=feedback.book_title,
+        review_text=feedback.review_text,
+        rating=feedback.rating
+    )
+    db.add(review)
+    db.commit()
+    return {"status": "saved", "review_id": review.id}
 
 if __name__ == "__main__":
     import uvicorn

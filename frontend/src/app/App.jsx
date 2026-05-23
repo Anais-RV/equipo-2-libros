@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Book } from 'lucide-react';
+import Login from '../components/Auth/Login';
 import '../styles/global.css';
 import styles from './App.module.css';
 import RecommendationForm from '../components/RecommendationForm/RecommendationForm';
@@ -12,6 +13,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [originalBook, setOriginalBook] = useState('');
+  const [token, setToken] = useState(() => localStorage.getItem('token'));
 
   const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -37,6 +39,13 @@ function App() {
       setLoading(false);
     }
   };
+
+if (!token) {
+  return <Login onLoginSuccess={(email, t) => {
+    setToken(t);
+    localStorage.setItem('token', t);
+  }} />;
+}
 
   return (
     <div className={styles.app}>
