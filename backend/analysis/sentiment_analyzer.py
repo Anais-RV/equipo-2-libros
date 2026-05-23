@@ -14,7 +14,7 @@ Cambios clave vs versión anterior:
 import time
 import os
 from typing import Dict
-
+import pickle
 import pandas as pd
 import numpy as np
 import torch
@@ -24,8 +24,10 @@ from transformers import pipeline
 # CONFIGURACIÓN
 # ============================================
 
-DATA_PATH = os.path.join(os.path.dirname(__file__), '..', '..')
-CACHE_PATH = os.path.join(os.path.dirname(__file__), '../../emotion_profiles.csv')
+DATA_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'data')
+CACHE_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'emotion_profiles.csv')
+NB_MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'cache', 'naive_bayes_emotions.pkl')
+NB_MODEL = pickle.load(open(NB_MODEL_PATH, 'rb')) if os.path.exists(NB_MODEL_PATH) else None
 
 EMOTIONS = ['joy', 'sadness', 'fear', 'surprise', 'anger', 'disgust']
 MAX_REVIEWS = 35
@@ -66,6 +68,7 @@ classifier = pipeline(
 )
 
 print("📚 Cargando libros...")
+
 ALL_BOOKS = pd.read_csv(os.path.join(DATA_PATH, "books_clean.csv"), encoding='latin-1')
 ALL_BOOKS['book_id'] = ALL_BOOKS['book_id'].astype(str)
 
@@ -123,7 +126,37 @@ def save_cache(rows: list):
     CACHE_DF = pd.concat([CACHE_DF, new_df], ignore_index=True) if not CACHE_DF.empty else new_df
     CACHE_DF.to_csv(CACHE_PATH, index=False)
 
+def estimate_profile_naive_bayes(texts: list) -> Dict[str, float]:
+    if NB_MODEL is None:
+        raise RuntimeError("Naive Bayes no cargado")
 
+    outputs = classifier(
+        texts,
+        batch_size=len(texts),
+        truncation=True,
+        max_length=MAX_TOKENS,
+        padding=True,
+    )
+
+    scores_list = [
+        {item['label'].lower(): item['score'] for item in out}
+        for out in outputs
+    ]
+    partial_profile = pd.DataFrame(scores_list)[EMOTIONS].mean().values.reshape(1, -1)
+
+    proba = NB_MODEL.predict_proba(partial_profile)[0]
+    nb_boost = dict(zip(NB_MODEL.classes_, proba))
+
+    final = {}
+    for i, e in enumerate(EMOTIONS):
+        final[e] = round(partial_profile[0][i] * 0.7 + nb_boost.get(e, 0.0) * 0.3, 4)
+
+    positive = final['joy'] + final['surprise']
+    negative = final['sadness'] + final['fear'] + final['anger'] + final['disgust']
+    final['average_sentiment'] = round((positive - negative / 2) / 1.5, 4)
+    final['nb_assisted'] = True
+
+    return final
 # ============================================
 # BATCH GLOBAL OPTIMIZADO
 # ============================================
@@ -145,6 +178,8 @@ def analyze_first_n_books(n: int = 16000) -> pd.DataFrame:
     # ---------- 1) Recopilar textos usando el índice pre-calculado ----------
     book_texts = {}      # title -> [texts]
     book_meta = {}       # title -> (book_id, author)
+    book_texts_nb = {}  
+
     for _, row in pending.iterrows():
         title = row['book_title']
         book_id = row['book_id']
@@ -154,9 +189,13 @@ def analyze_first_n_books(n: int = 16000) -> pd.DataFrame:
             for r in reviews[:MAX_REVIEWS]
             if isinstance(r, str) and r.strip()
         ]
-        if texts:
+        if not texts:
+            continue
+        book_meta[title] = (book_id, row.get('author', ''))
+        if len(texts) >= 4:
             book_texts[title] = texts
-            book_meta[title] = (book_id, row.get('author', ''))
+        elif NB_MODEL is not None:
+            book_texts_nb[title] = texts
 
     print(f"✓ {len(book_texts)} libros con reviews aptas")
 
@@ -235,7 +274,22 @@ def analyze_first_n_books(n: int = 16000) -> pd.DataFrame:
             save_cache(new_rows)
             new_rows = []   # ya guardados, reseteamos buffer
             print(f"  💾 Checkpoint guardado ({len(CACHE_DF)} libros totales)")
-
+                
+    print(f"\n🧠 Procesando {len(book_texts_nb)} libros con Naive Bayes...")
+    for title, texts in book_texts_nb.items():
+        try:
+            profile = estimate_profile_naive_bayes(texts)
+            book_id, author = book_meta[title]
+            new_rows.append({
+                'book_id': book_id,
+                'book_title': title,
+                'author': author,
+                **profile,
+            })
+        except Exception as e:
+            print(f"  ✗ Error NB en '{title}': {e}")
+            continue
+        
     # Guardado final
     save_cache(new_rows)
     print(f"\n💾 Caché final: {len(CACHE_DF)} libros totales")
