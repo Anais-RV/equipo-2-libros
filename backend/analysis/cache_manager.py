@@ -246,7 +246,10 @@ def cache_sentiment(func):
         result = func(book_title)
 
         # Guardar en caché
-        cache.save_sentiment_profile(book_title, result)
+        if result is not None:
+            cache.save_sentiment_profile(book_title, result)
+        else:
+            print(f"  ⚠️ Sin reviews para '{book_title}', no se cachea")
 
         return result
 
@@ -280,4 +283,5 @@ if __name__ == "__main__":
     print("\nEstadísticas:")
     stats = cache.get_cache_stats()
     print(f"Libros en caché: {stats['cached_books']}")
-    print(f"Tamaño: {stats['total_size_mb']:.2f} MB")
+    print(f"Tamaño: {stats['total_size_mb']:.2f} MB") 
+    

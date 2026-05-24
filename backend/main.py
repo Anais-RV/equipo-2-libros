@@ -1,51 +1,54 @@
-"""
-🦄 FastAPI Backend - Sistema de Recomendación de Libros
+from pathlib import Path
+import sys
+from typing import Optional
 
-Estructura modular donde:
-- analysis/ contiene la lógica ML (BERT, clustering, etc.)
-- main.py orquesta y expone API REST
-
-Los estudiantes implementan funciones en:
-- analysis/sentiment_analyzer.py → analyze_sentiment()
-- analysis/recommender.py → find_similar_books()
-- analysis/data_processor.py → carga y limpieza
-- analysis/cache_manager.py → persistencia
-
-El frontend (React) consumirá: POST /recommend
-"""
-
-from fastapi import FastAPI, HTTPException
+import pandas as pd
+from fastapi import FastAPI, HTTPException, Query, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from sqlalchemy.orm import Session
 import logging
 
-# Importar funciones de analysis
-from analysis.sentiment_analyzer import analyze_sentiment
-from analysis.recommender import find_similar_books
+from analysis.recommender import recomendar_por_afinidad_emocional, find_similar_books
 from analysis.cache_manager import CacheManager, cache_sentiment
-cache = CacheManager()
-
 from auth import hash_password, verify_password, create_access_token, verify_token
 from database import get_db
 from schemas import UserRegister, UserLogin, TokenResponse, UserFeedback
 from models import User, UserReview
-from sqlalchemy.orm import Session
-from fastapi import Depends, Header
-# ============================================
+
+# ============================================================
 # LOGGING
-# ============================================
+# ============================================================
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ============================================
-# FASTAPI APP
-# ============================================
+# ============================================================
+# PATHS
+# ============================================================
+
+BASE_DIR = Path(__file__).resolve().parent
+ROOT_DIR = BASE_DIR.parent
+DATA_DIR = ROOT_DIR / "data"
+
+if str(BASE_DIR) not in sys.path:
+    sys.path.append(str(BASE_DIR))
+
+# ============================================================
+# ARCHIVOS CSV
+# ============================================================
+
+BOOKS_PATH = DATA_DIR / "books_clean.csv"
+PROFILES_PATH = DATA_DIR / "emotion_profiles.csv"
+RECOMMENDATIONS_PATH = DATA_DIR / "all_book_recommendations.csv"
+
+# ============================================================
+# APP FASTAPI
+# ============================================================
 
 app = FastAPI(
-    title="🦄 Book Recommendation API",
-    description="Sistema de recomendación basado en análisis de sentimientos emocionales",
-    version="1.0.0"
+    title="API Recomendador de Libros",
+    description="API para buscar libros y recomendar por afinidad emocional.",
+    version="3.0.0",
 )
 
 app.add_middleware(
@@ -55,193 +58,269 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# ============================================
-# MODELOS (Request/Response)
-# ============================================
 
-class BookInput(BaseModel):
-    """Input: El usuario ingresa un libro que le encantó"""
-    title: str
-    description: str = "Un libro que me encantó"
+# ============================================================
+# CACHE
+# ============================================================
 
-class BookRecommendation(BaseModel):
-    """Recomendación individual (uno de los TOP 5)"""
-    title: str
-    author: str
-    sentiment_score: float
-    reason: str
+cache = CacheManager()
+books_df = None
+profiles_df = None
+recommendations_df = None
 
-class RecommendationResponse(BaseModel):
-    """Response: Las 5 recomendaciones + resumen"""
-    original_book: str
-    recommendations: list[BookRecommendation]
-    analysis_summary: str
 
-# ============================================
-# ENDPOINTS
-# ============================================
+def cargar_csv_seguro(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        raise FileNotFoundError(f"No existe el archivo: {path}")
+    return pd.read_csv(path)
+
+
+def get_books_df() -> pd.DataFrame:
+    global books_df
+    if books_df is None:
+        books_df = cargar_csv_seguro(BOOKS_PATH)
+    return books_df
+
+
+def get_profiles_df() -> pd.DataFrame:
+    global profiles_df
+    if profiles_df is None:
+        profiles_df = cargar_csv_seguro(PROFILES_PATH)
+    return profiles_df
+
+
+def get_recommendations_df() -> pd.DataFrame:
+    global recommendations_df
+    if recommendations_df is None:
+        recommendations_df = cargar_csv_seguro(RECOMMENDATIONS_PATH)
+    return recommendations_df
+
+
+def limpiar_nan(valor):
+    if pd.isna(valor):
+        return None
+    if hasattr(valor, "item"):
+        return valor.item()
+    return valor
+
+
+def fila_a_dict(fila) -> dict:
+    return {columna: limpiar_nan(valor) for columna, valor in fila.items()}
+
+
+def normalizar_texto(texto) -> str:
+    if texto is None:
+        return ""
+    return str(texto).lower().strip()
+
+
+# ============================================================
+# HOME / HEALTH
+# ============================================================
+
+@app.get("/")
+def home():
+    return {
+        "message": "API de recomendacion de libros funcionando correctamente",
+        "version": "3.0.0",
+    }
+
 
 @app.get("/health")
 def health_check():
-    """
-    Verifica que la API funciona.
-
-    Returns:
-        {"status": "ok"}
-    """
-    logger.info("Health check")
     return {
-        "status": "ok",
-        "message": "API funcionando correctamente",
-        "version": "1.0.0"
+        "api": "ok",
+        "data_dir": str(DATA_DIR),
+        "books_clean.csv": BOOKS_PATH.exists(),
+        "emotion_profiles.csv": PROFILES_PATH.exists(),
+        "all_book_recommendations.csv": RECOMMENDATIONS_PATH.exists(),
     }
 
-@app.post("/recommend", response_model=RecommendationResponse)
-def get_recommendations(book: BookInput):
-    """
-    ENDPOINT PRINCIPAL: Obtiene recomendaciones de libros
 
-    Input:
-        {
-            "title": "The Midnight Library",
-            "description": "Un libro que cambió mi vida"
-        }
-
-    Output:
-        {
-            "original_book": "The Midnight Library",
-            "recommendations": [
-                {
-                    "title": "Piranesi",
-                    "author": "Susanna Clarke",
-                    "sentiment_score": 0.82,
-                    "reason": "Similar emotional impact"
-                },
-                ...
-            ],
-            "analysis_summary": "..."
-        }
-
-    Flujo:
-    1. Valida entrada
-    2. Busca en caché (si existe)
-    3. Analiza sentimientos del libro (analyze_sentiment)
-    4. Encuentra libros similares (find_similar_books)
-    5. Retorna top 5 recomendaciones
-
-    Nota para estudiantes:
-    - analyze_sentiment() está en analysis/sentiment_analyzer.py (TODO)
-    - find_similar_books() está en analysis/recommender.py (TODO)
-    - El caché evita recalcular (ver cache_manager.py)
-    """
-
-    # Validar entrada
-    if not book.title or len(book.title.strip()) == 0:
-        logger.warning("Intento de búsqueda con título vacío")
-        raise HTTPException(
-            status_code=400,
-            detail="El título del libro no puede estar vacío"
-        )
-
-    try:
-        logger.info(f"Procesando búsqueda: '{book.title}'")
-
-        # Paso 1: Intentar obtener del caché
-        cached_profile = cache.get_sentiment_profile(book.title)
-        if cached_profile:
-            logger.info(f"📦 Usando caché para '{book.title}'")
-            sentiment_profile = cached_profile
-        else:
-            # Paso 2: Analizar sentimientos (LENTO)
-            logger.info(f"⏳ Analizando sentimientos (sin caché)...")
-            sentiment_profile = analyze_sentiment(book.title)
-            # Guardar en caché para próxima vez
-            cache.save_sentiment_profile(book.title, sentiment_profile)
-
-        # Paso 3: Encontrar libros similares
-        logger.info("Buscando libros similares...")
-        recommendations = find_similar_books(sentiment_profile, num_recommendations=5)
-
-        # Paso 4: Armar respuesta
-        response = RecommendationResponse(
-            original_book=book.title,
-            recommendations=[
-                BookRecommendation(**rec) for rec in recommendations
-            ],
-            analysis_summary=f"Se analizaron reviews de '{book.title}' para encontrar libros con impacto emocional similar basado en 6 emociones (joy, sadness, fear, surprise, anger, disgust)."
-        )
-
-        logger.info(f"✓ Recomendaciones obtenidas: {len(recommendations)} libros")
-        return response
-
-    except ValueError as e:
-        logger.error(f"Validación: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error procesando recomendación: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error al procesar recomendación: {str(e)}"
-        )
-
-@app.get("/data-info")
-def get_data_info():
-    """
-    Información del dataset.
-
-    Retorna:
-        - total_books: Número de libros en el dataset
-        - total_reviews: Número de reviews analizables
-        - emotions: Las 6 emociones que se detectan
-        - cache_status: Información del caché actual
-    """
-    stats = cache.get_cache_stats()
-
-    return {
-        "total_books": 16225,
-        "total_reviews": 63014,
-        "emotions": ["joy", "sadness", "fear", "surprise", "anger", "disgust"],
-        "cache": {
-            "cached_books": stats["cached_books"],
-            "size_mb": f"{stats['total_size_mb']:.2f}"
-        },
-        "status": "Listo para análisis - Los estudiantes completan sentiment_analyzer.py y recommender.py"
-    }
-
-@app.get("/cache-stats")
-def get_cache_stats():
-    """
-    Estadísticas del caché (para debugging).
-
-    Útil para ver cuántos análisis se han cacheado.
-    """
-    stats = cache.get_cache_stats()
-    return {
-        "cached_books": stats["cached_books"],
-        "total_size_mb": f"{stats['total_size_mb']:.2f}",
-        "message": "Ver cache/sentiment_profiles.json para los detalles"
-    }
-
-@app.delete("/cache-clear")
-def clear_cache():
-    """
-    Limpia el caché (CUIDADO: borra todos los análisis guardados).
-
-    Útil si cambian el modelo BERT o quieren reanalizar.
-    """
-    cache.clear_all()
-    logger.warning("Caché limpiado")
-    return {"message": "Caché limpiado"}
-
-# ============================================
-# MAIN
-# ============================================
 # ============================================================
-# AUTH ENDPOINTS 🦄
+# BOOKS
+# ============================================================
+
+@app.get("/books")
+def listar_libros(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    try:
+        df = get_books_df()
+        total = len(df)
+        resultados = df.iloc[offset:offset + limit]
+        return {"total": total, "limit": limit, "offset": offset,
+                "books": [fila_a_dict(fila) for _, fila in resultados.iterrows()]}
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.get("/books/{book_id}")
+def obtener_libro(book_id: str):
+    try:
+        df = get_books_df()
+        df = df.copy()
+        df["book_id"] = df["book_id"].astype(str)
+        resultado = df[df["book_id"] == str(book_id)]
+        if resultado.empty:
+            raise HTTPException(status_code=404, detail=f"No se encontro el libro con book_id: {book_id}")
+        return fila_a_dict(resultado.iloc[0])
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.get("/search")
+def buscar_libros(title: str = Query(..., min_length=1), limit: int = Query(default=10, ge=1, le=50)):
+    try:
+        df = get_books_df()
+        df = df.copy()
+        df["book_title"] = df["book_title"].fillna("").astype(str)
+        resultados = df[df["book_title"].str.lower().str.contains(title.lower(), na=False, regex=False)].head(limit)
+        return {"query": title, "total": len(resultados),
+                "books": [fila_a_dict(fila) for _, fila in resultados.iterrows()]}
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+# ============================================================
+# EMOTION PROFILES
+# ============================================================
+
+@app.get("/profiles")
+def listar_perfiles(limit: int = Query(default=20, ge=1, le=100), offset: int = Query(default=0, ge=0)):
+    try:
+        df = get_profiles_df()
+        total = len(df)
+        resultados = df.iloc[offset:offset + limit]
+        return {"total": total, "limit": limit, "offset": offset,
+                "profiles": [fila_a_dict(fila) for _, fila in resultados.iterrows()]}
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.get("/profiles/{book_id}")
+def obtener_perfil_libro(book_id: str):
+    try:
+        df = get_profiles_df()
+        df = df.copy()
+        df["book_id"] = df["book_id"].astype(str)
+        resultado = df[df["book_id"] == str(book_id)]
+        if resultado.empty:
+            raise HTTPException(status_code=404, detail=f"No se encontro perfil emocional para book_id: {book_id}")
+        return fila_a_dict(resultado.iloc[0])
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.get("/profiles/search/by-title")
+def buscar_perfil_por_titulo(title: str = Query(..., min_length=1), limit: int = Query(default=10, ge=1, le=50)):
+    try:
+        df = get_profiles_df()
+        df = df.copy()
+        df["book_title"] = df["book_title"].fillna("").astype(str)
+        resultados = df[df["book_title"].str.lower().str.contains(title.lower(), na=False, regex=False)].head(limit)
+        return {"query": title, "total": len(resultados),
+                "profiles": [fila_a_dict(fila) for _, fila in resultados.iterrows()]}
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+# ============================================================
+# RECOMENDACIONES
+# ============================================================
+
+@app.get("/recommendations/emotional")
+def recomendar_emocional(
+    title: str = Query(..., min_length=1),
+    top_n: int = Query(default=5, ge=1, le=20),
+    min_reviews: int = Query(default=1, ge=1),
+    excluir_mismo_autor: bool = Query(default=False),
+):
+    """Recomendacion usando emotion_profiles.csv. No recalcula BERT ni lee reviews."""
+    try:
+        resultado = recomendar_por_afinidad_emocional(
+            titulo_libro=title, top_n=top_n,
+            min_reviews=min_reviews, excluir_mismo_autor=excluir_mismo_autor,
+        )
+        if "error" in resultado:
+            raise HTTPException(status_code=404, detail=resultado)
+        return resultado
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.get("/recommend")
+def recomendar_compatibilidad(title: str = Query(..., min_length=1), num_recommendations: int = Query(default=5, ge=1, le=20)):
+    """Endpoint compatible con versiones anteriores."""
+    try:
+        return find_similar_books(title=title, num_recommendations=num_recommendations)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.get("/recommendations/precomputed")
+def recomendaciones_precalculadas(
+    book_id: Optional[str] = Query(default=None),
+    title: Optional[str] = Query(default=None),
+    limit: int = Query(default=5, ge=1, le=20),
+):
+    """Lee all_book_recommendations.csv generado por recommender.py."""
+    try:
+        df = get_recommendations_df()
+        df = df.copy()
+        if book_id is not None:
+            df["book_id"] = df["book_id"].astype(str)
+            df = df[df["book_id"] == str(book_id)]
+        elif title is not None:
+            df["book_title"] = df["book_title"].fillna("").astype(str)
+            df = df[df["book_title"].str.lower().str.contains(title.lower(), na=False, regex=False)]
+        else:
+            raise HTTPException(status_code=400, detail="Debes enviar book_id o title")
+        if df.empty:
+            raise HTTPException(status_code=404, detail="No se encontraron recomendaciones precalculadas")
+        if "recommended_rank" in df.columns:
+            df = df.sort_values("recommended_rank")
+        df = df.head(limit)
+        return {"total": len(df), "recommendations": [fila_a_dict(fila) for _, fila in df.iterrows()]}
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.post("/reload")
+def recargar_datos():
+    """Limpia la cache en memoria. Util despues de cambiar CSVs."""
+    global books_df, profiles_df, recommendations_df
+    books_df = None
+    profiles_df = None
+    recommendations_df = None
+    return {"message": "Datos recargados correctamente"}
+
+
+# ============================================================
+# AUTH ENDPOINTS
 # ============================================================
 
 def get_current_user(authorization: str = Header(..., alias="Authorization")) -> str:
-    """🦄 Middleware que comprueba el token en cada request protegido"""
+    """Middleware que comprueba el token en cada request protegido"""
     try:
         scheme, token = authorization.split()
         if scheme.lower() != "bearer":
@@ -251,11 +330,12 @@ def get_current_user(authorization: str = Header(..., alias="Authorization")) ->
             raise HTTPException(status_code=401)
         return email
     except:
-        raise HTTPException(status_code=401, detail="Token inválido")
+        raise HTTPException(status_code=401, detail="Token invalido")
+
 
 @app.post("/auth/register", response_model=TokenResponse)
 def register(user: UserRegister, db: Session = Depends(get_db)):
-    """🦄 Registra un usuario nuevo"""
+    """Registra un usuario nuevo"""
     if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(status_code=400, detail="Email ya registrado")
     new_user = User(email=user.email, password_hash=hash_password(user.password))
@@ -264,23 +344,26 @@ def register(user: UserRegister, db: Session = Depends(get_db)):
     token = create_access_token({"sub": user.email})
     return {"access_token": token, "token_type": "bearer"}
 
+
 @app.post("/auth/login", response_model=TokenResponse)
 def login(user: UserLogin, db: Session = Depends(get_db)):
-    """🦄 Loguea un usuario existente"""
+    """Loguea un usuario existente"""
     db_user = db.query(User).filter(User.email == user.email).first()
     if not db_user or not verify_password(user.password, db_user.password_hash):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
     token = create_access_token({"sub": user.email})
     return {"access_token": token, "token_type": "bearer"}
 
+
 @app.get("/user/me")
 def get_me(current_user: str = Depends(get_current_user)):
-    """🦄 Devuelve el email del usuario logueado"""
+    """Devuelve el email del usuario logueado"""
     return {"email": current_user}
+
 
 @app.post("/user/feedback")
 def save_feedback(feedback: UserFeedback, current_user: str = Depends(get_current_user), db: Session = Depends(get_db)):
-    """🦄 Guarda una review de un usuario"""
+    """Guarda una review de un usuario"""
     review = UserReview(
         user_email=current_user,
         book_title=feedback.book_title,
@@ -291,9 +374,14 @@ def save_feedback(feedback: UserFeedback, current_user: str = Depends(get_curren
     db.commit()
     return {"status": "saved", "review_id": review.id}
 
+
+# ============================================================
+# MAIN
+# ============================================================
+
 if __name__ == "__main__":
     import uvicorn
-    logger.info("🦄 Iniciando API de Recomendación de Libros...")
+    logger.info("Iniciando API de Recomendacion de Libros...")
     logger.info("Frontend: http://localhost:3000")
     logger.info("API: http://localhost:8000")
     logger.info("Docs: http://localhost:8000/docs")

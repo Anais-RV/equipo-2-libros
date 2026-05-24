@@ -1,67 +1,78 @@
 import React from 'react';
 import styles from './BookCard.module.css';
+import EmotionBars from '../EmotionBars/EmotionBars';
 
-/**
- * BookCard - Tarjeta individual para mostrar una recomendación
- *
- * Props:
- * - book: object - Objeto con { title, author, sentiment_score, reason }
- * - position: number - Número de posición (1-5) para ranking visual
- *
- * Muestra:
- * - Número de ranking
- * - Título y autor
- * - Barra visual de sentiment score
- * - Razón de la recomendación
- */
+function pct(v) {
+  return `${Math.round(Number(v || 0) * 100)}%`;
+}
+
 function BookCard({ book, position }) {
-  // Colores según similaridad emocional
-  const getSentimentColor = (score) => {
-    if (score >= 0.8) return 'var(--color-success)';     // Verde
-    if (score >= 0.65) return 'var(--color-accent)';     // Dorado
-    if (score >= 0.5) return 'var(--color-warning)';     // Ámbar
-    return 'var(--color-secondary)';                      // Cobre
-  };
-
-  const percentageScore = Math.min(book.sentiment_score * 100, 100);
-  const sentimentColor = getSentimentColor(book.sentiment_score);
+  const score = Number(book.score_final ?? book.similarity ?? 0);
 
   return (
     <article className={styles.card}>
-      <div className={styles.card__rank}>
-        <span className={styles.card__rank__number}>{position}</span>
+      <div className={styles.top}>
+        <div className={styles.rank}>#{position}</div>
+
+        <div className={styles.match}>
+          <span>{Math.round(score * 100)}%</span>
+          match
+        </div>
       </div>
 
-      <div className={styles.card__content}>
-        <div className={styles.card__header}>
-          <h3 className={styles.card__title}>{book.title}</h3>
-          <p className={styles.card__author}>— {book.author}</p>
-        </div>
+      <div className={styles.content}>
+        <h3>{book.book_title || 'Título desconocido'}</h3>
 
-        <div className={styles.card__sentiment}>
-          <div className={styles.card__sentiment__bar}>
-            <div
-              className={styles.card__sentiment__fill}
-              style={{
-                width: `${percentageScore}%`,
-                backgroundColor: sentimentColor
-              }}
-              role="progressbar"
-              aria-valuenow={percentageScore}
-              aria-valuemin="0"
-              aria-valuemax="100"
-              aria-label={`Similitud emocional: ${percentageScore.toFixed(0)}%`}
-            />
-          </div>
-          <span className={styles.card__sentiment__label}>
-            {percentageScore.toFixed(0)}% Match
-          </span>
-        </div>
-
-        <p className={styles.card__reason}>
-          <span className={styles.card__reason__icon}>💭</span>
-          {book.reason}
+        <p className={styles.author}>
+          {book.author || 'Autor desconocido'}
         </p>
+
+        <div className={styles.grid}>
+          <div>
+            <span>Dominante</span>
+            <strong>
+              {book.emocion_dominante_es || book.emocion_dominante || '—'}
+            </strong>
+          </div>
+
+          <div>
+            <span>Rating</span>
+            <strong>{Number(book.average_rating || 0).toFixed(2)}</strong>
+          </div>
+
+          <div>
+            <span>Emoción</span>
+            <strong>{pct(book.emotion_similarity ?? book.similarity)}</strong>
+          </div>
+
+          <div>
+            <span>Géneros</span>
+            <strong>{pct(book.genre_similarity)}</strong>
+          </div>
+        </div>
+
+        <EmotionBars profile={book} />
+
+        {book.genres && (
+          <p className={styles.genres}>
+            {String(book.genres)}
+          </p>
+        )}
+
+        {book.book_details && (
+          <div className={styles.synopsisBox}>
+            <span className={styles.synopsisTitle}>Sinopsis</span>
+            <p className={styles.synopsis}>
+              {String(book.book_details)}
+            </p>
+          </div>
+        )}
+
+        {book.reason && (
+          <p className={styles.reason}>
+            {book.reason}
+          </p>
+        )}
       </div>
     </article>
   );

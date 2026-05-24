@@ -30,6 +30,10 @@ transformers==4.51.3
 sentence-transformers==3.0.1
 textblob==0.19.0
 rapidfuzz>=3.10.0
+sentence-transformers==3.4.1
+textblob==0.19.0
+langdetect==1.0.9
+rapidfuzz
 
 # Web Framework (Dashboard)
 streamlit==1.45.0
@@ -39,6 +43,12 @@ python-dotenv==1.1.0
 ipython==9.1.0
 jupyter==1.1.1
 ipykernel==6.29.5
+
+# GPU
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+torchaudio==2.11.0+cu128
+--extra-index-url https://download.pytorch.org/whl/cu128
 
 # ============================================================================
 # NOTAS DE INSTALACIÓN:
