@@ -5,6 +5,7 @@ import RecommendationForm from '../components/RecommendationForm/RecommendationF
 import ResultsDisplay from '../components/ResultsDisplay/ResultsDisplay';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import Login from '../components/Auth/Login';
+import UserMenu from '../components/UserMenu/UserMenu';
 import { getEmotionalRecommendations } from '../services/api';
 
 function App() {
@@ -20,10 +21,23 @@ function App() {
     }} />;
   }
 
+  function handleLogout() {
+    localStorage.removeItem('token');
+    setToken(null);
+  }
+
   async function handleSubmit(payload) {
     setLoading(true);
     setError(null);
     setRecommendations(null);
+
+    // Guardar en el historial del navegador
+    if (payload.bookTitle) {
+      const hist = JSON.parse(localStorage.getItem('searchHistory') || '[]');
+      hist.push(payload.bookTitle);
+      localStorage.setItem('searchHistory', JSON.stringify(hist.slice(-20)));
+    }
+
     try {
       const data = await getEmotionalRecommendations({
         title: payload.bookTitle,
@@ -42,6 +56,7 @@ function App() {
 
   return (
     <div className={styles.shell}>
+      <UserMenu token={token} onLogout={handleLogout} />
       <div className={styles.orbA}/>
       <div className={styles.orbB}/>
       <header className={styles.hero}>
