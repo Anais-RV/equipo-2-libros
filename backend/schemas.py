@@ -23,9 +23,10 @@ class UserRegister(BaseModel):
         "password": "securepassword123"
     }
     """
-    email: str  # XXX TODO: Cambiar a EmailStr para validar email real
+  
+    email: str
     password: str
-
+    username: Optional[str] = None
 
 class UserLogin(BaseModel):
     """
@@ -152,6 +153,14 @@ class BookNotFoundResponse(BaseModel):
     error: str
     suggestion: str
     book_title: str
+
+
+class UpdateUsername(BaseModel):
+    username: str
+
+class UpdatePassword(BaseModel):
+    current_password: str
+    new_password: str
 
 
 # ============================================

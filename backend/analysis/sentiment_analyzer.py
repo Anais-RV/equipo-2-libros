@@ -9,6 +9,7 @@ Cambios clave vs versión anterior:
   4. Pre-indexado de reviews por book_id (groupby) → elimina bucle O(n²)
   5. Checkpoints incrementales → si crashea no pierdes el trabajo
   6. Comprobación explícita de CUDA al arrancar
+  7. encoding='utf-8' → no corrompe tildes, eñes ni caracteres especiales
 """
 
 import time
@@ -30,7 +31,7 @@ NB_MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'cache', 'na
 NB_MODEL = pickle.load(open(NB_MODEL_PATH, 'rb')) if os.path.exists(NB_MODEL_PATH) else None
 
 EMOTIONS = ['joy', 'sadness', 'fear', 'surprise', 'anger', 'disgust']
-MAX_REVIEWS = 35
+MAX_REVIEWS = 5
 MAX_CHARS = 500
 MAX_TOKENS = 128         # antes era el default 512 → 4× menos cómputo
 BATCH_SIZE = 512         # subido de 256 (con fp16 cabe sin problema)
@@ -69,13 +70,13 @@ classifier = pipeline(
 
 print("📚 Cargando libros...")
 
-ALL_BOOKS = pd.read_csv(os.path.join(DATA_PATH, "books_clean.csv"), encoding='latin-1')
+ALL_BOOKS = pd.read_csv(os.path.join(DATA_PATH, "books_clean.csv"), encoding='utf-8')
 ALL_BOOKS['book_id'] = ALL_BOOKS['book_id'].astype(str)
 
 print("📝 Cargando reviews...")
 ALL_REVIEWS = pd.read_csv(
     os.path.join(DATA_PATH, "reviews_clean.csv"),
-    encoding='latin-1',
+    encoding='utf-8',
     on_bad_lines='skip',
     engine='python',
 )
@@ -94,7 +95,7 @@ print(f"✓ {len(ALL_BOOKS)} libros | {len(ALL_REVIEWS)} reviews | "
       f"{len(REVIEWS_BY_BOOK)} libros con reviews\n")
 
 if os.path.exists(CACHE_PATH) and os.path.getsize(CACHE_PATH) > 0:
-    CACHE_DF = pd.read_csv(CACHE_PATH, encoding='latin-1')
+    CACHE_DF = pd.read_csv(CACHE_PATH, encoding='utf-8')
     print(f"✓ {len(CACHE_DF)} libros ya en caché\n")
 else:
     CACHE_DF = pd.DataFrame()
@@ -124,7 +125,8 @@ def save_cache(rows: list):
         return
     new_df = pd.DataFrame(rows)
     CACHE_DF = pd.concat([CACHE_DF, new_df], ignore_index=True) if not CACHE_DF.empty else new_df
-    CACHE_DF.to_csv(CACHE_PATH, index=False)
+    CACHE_DF.to_csv(CACHE_PATH, index=False, encoding='utf-8')
+
 
 def estimate_profile_naive_bayes(texts: list) -> Dict[str, float]:
     if NB_MODEL is None:
@@ -157,6 +159,8 @@ def estimate_profile_naive_bayes(texts: list) -> Dict[str, float]:
     final['nb_assisted'] = True
 
     return final
+
+
 # ============================================
 # BATCH GLOBAL OPTIMIZADO
 # ============================================
@@ -178,7 +182,7 @@ def analyze_first_n_books(n: int = 16000) -> pd.DataFrame:
     # ---------- 1) Recopilar textos usando el índice pre-calculado ----------
     book_texts = {}      # title -> [texts]
     book_meta = {}       # title -> (book_id, author)
-    book_texts_nb = {}  
+    book_texts_nb = {}
 
     for _, row in pending.iterrows():
         title = row['book_title']
@@ -243,8 +247,11 @@ def analyze_first_n_books(n: int = 16000) -> pd.DataFrame:
             print(f"  ⚡ {i:>7}/{total} | {rate:6.0f} txt/s | ETA: {eta_min:5.1f} min")
 
     total_inf = time.time() - start_t
-    print(f"\n✓ Inferencia completada en {total_inf/60:.1f} min "
-          f"({total/total_inf:.0f} textos/s promedio)\n")
+    if total_inf > 0:
+        print(f"\n✓ Inferencia completada en {total_inf/60:.1f} min "
+              f"({total/total_inf:.0f} textos/s promedio)\n")
+    else:
+        print("\n✓ Nada que procesar.\n")
 
     # ---------- 4) Reconstruir perfiles por libro ----------
     print("📊 Calculando perfiles emocionales...")
@@ -274,7 +281,7 @@ def analyze_first_n_books(n: int = 16000) -> pd.DataFrame:
             save_cache(new_rows)
             new_rows = []   # ya guardados, reseteamos buffer
             print(f"  💾 Checkpoint guardado ({len(CACHE_DF)} libros totales)")
-                
+
     print(f"\n🧠 Procesando {len(book_texts_nb)} libros con Naive Bayes...")
     for title, texts in book_texts_nb.items():
         try:
@@ -289,7 +296,7 @@ def analyze_first_n_books(n: int = 16000) -> pd.DataFrame:
         except Exception as e:
             print(f"  ✗ Error NB en '{title}': {e}")
             continue
-        
+
     # Guardado final
     save_cache(new_rows)
     print(f"\n💾 Caché final: {len(CACHE_DF)} libros totales")

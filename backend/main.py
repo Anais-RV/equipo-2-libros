@@ -1,4 +1,5 @@
 from pathlib import Path
+from dotenv import load_dotenv
 import sys
 from typing import Optional
 
@@ -8,11 +9,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import logging
 
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 from analysis.recommender import recomendar_por_afinidad_emocional, find_similar_books
 from analysis.cache_manager import CacheManager, cache_sentiment
 from auth import hash_password, verify_password, create_access_token, verify_token
 from database import get_db
-from schemas import UserRegister, UserLogin, TokenResponse, UserFeedback
+from schemas import UserRegister, UserLogin, TokenResponse, UserFeedback, UpdateUsername, UpdatePassword
 from models import User, UserReview
 
 # ============================================================
@@ -356,10 +359,14 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 
 
 @app.get("/user/me")
-def get_me(current_user: str = Depends(get_current_user)):
-    """Devuelve el email del usuario logueado"""
-    return {"email": current_user}
-
+def get_me(current_user: str = Depends(get_current_user), db: Session = Depends(get_db)):
+    """🦄 Devuelve los datos del usuario logueado"""
+    user = db.query(User).filter(User.email == current_user).first()
+    return {
+        "email": user.email,
+        "username": user.username,
+        "created_at": user.created_at.isoformat() if user.created_at else None
+    }
 
 @app.post("/user/feedback")
 def save_feedback(feedback: UserFeedback, current_user: str = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -374,7 +381,28 @@ def save_feedback(feedback: UserFeedback, current_user: str = Depends(get_curren
     db.commit()
     return {"status": "saved", "review_id": review.id}
 
+@app.patch("/user/username")
+def update_username(data: UpdateUsername, current_user: str = Depends(get_current_user), db: Session = Depends(get_db)):
+    """🦄 Cambia el nombre de usuario"""
+    user = db.query(User).filter(User.email == current_user).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    user.username = data.username
+    db.commit()
+    return {"status": "ok", "username": user.username}
 
+
+@app.patch("/user/password")
+def update_password(data: UpdatePassword, current_user: str = Depends(get_current_user), db: Session = Depends(get_db)):
+    """🦄 Cambia la contraseña"""
+    user = db.query(User).filter(User.email == current_user).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if not verify_password(data.current_password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Contraseña actual incorrecta")
+    user.password_hash = hash_password(data.new_password)
+    db.commit()
+    return {"status": "ok"}
 # ============================================================
 # MAIN
 # ============================================================
