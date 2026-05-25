@@ -88,7 +88,7 @@ function ResultsDisplay({ recommendations }) {
           </p>
         </div>
       ) : (
-        <div className={styles.grid}>
+        <div className={styles.cards}>
           {books.map((book, index) => (
             <BookCard
               key={`${book.book_id || book.book_title}-${index}`}

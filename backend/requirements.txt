@@ -49,10 +49,10 @@ beautifulsoup4==4.14.3
 requests==2.34.2
  
 # GPU (comentar estas 4 lineas si NO tienes GPU Nvidia)
-#torch==2.11.0+cu128
-#torchvision==0.26.0+cu128
-#torchaudio==2.11.0+cu128
-#--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+torchaudio==2.11.0+cu128
+--extra-index-url https://download.pytorch.org/whl/cu128
  
 # ============================================================================
 # NOTAS DE INSTALACION:
