@@ -61,7 +61,7 @@ function App() {
       <div className={styles.orbB}/>
       <header className={styles.hero}>
         <div className={styles.badge}><span/>Recomendador emocional inteligente</div>
-        <h1>Encuentra libros por la <em>huella emocional</em> que dejan.</h1>
+        <h1> <em>Libros que emocionan</em> </h1>
         <p>Un dashboard que compara alegría, tristeza, miedo, sorpresa, ira y asco, y además mezcla géneros y rating para que las recomendaciones tengan más sentido.</p>
       </header>
       <main className={styles.main}>

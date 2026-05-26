@@ -52,7 +52,7 @@ function ResultsDisplay({ recommendations }) {
             </p>
           )}
 
-          {baseBook.book_details_es || baseBook.book_details && (
+          {(baseBook.book_details_es || baseBook.book_details) && (
             <div className={styles.synopsisBox}>
               <span className={styles.synopsisTitle}>Sinopsis</span>
               <p className={styles.synopsis}>
