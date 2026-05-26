@@ -229,6 +229,7 @@ def cargar_books_metadata():
                 "average_rating",
                 "language",
                 "book_details",
+                "cover_image_uri",
             ]
         )
 
@@ -238,6 +239,7 @@ def cargar_books_metadata():
         "average_rating",
         "language",
         "book_details",
+        "cover_image_uri",
     ]
 
     columnas_existentes = [
@@ -287,7 +289,7 @@ def cargar_perfiles():
             suffixes=("", "_book"),
         )
 
-    for columna in ["genres", "language", "book_details"]:
+    for columna in ["genres", "language", "book_details", "cover_image_uri"]:
         if columna not in perfiles.columns:
             perfiles[columna] = ""
 
@@ -370,33 +372,28 @@ def buscar_libro_por_titulo(perfiles, titulo):
 
 
 def obtener_sugerencias_titulo(perfiles, titulo, limit=10):
+    from rapidfuzz import process, fuzz
+
     titulo_normalizado = normalizar_texto(titulo)
 
     if titulo_normalizado == "":
         return []
 
-    palabras = [
-        palabra
-        for palabra in titulo_normalizado.split()
-        if len(palabra) > 2
-    ]
+    titulos = perfiles["book_title"].astype(str).tolist()
 
-    if not palabras:
+    resultados = process.extract(
+        titulo_normalizado,
+        [normalizar_texto(t) for t in titulos],
+        scorer=fuzz.WRatio,
+        limit=limit,
+    )
+
+    indices = [r[2] for r in resultados if r[1] >= 70]
+
+    if not indices:
         return []
 
-    primera_palabra = palabras[0]
-
-    sugerencias = perfiles[
-        perfiles["book_title"]
-        .astype(str)
-        .str.lower()
-        .str.contains(primera_palabra, na=False, regex=False)
-    ].copy()
-
-    sugerencias = sugerencias.sort_values(
-        by=["average_rating"],
-        ascending=False,
-    ).head(limit)
+    sugerencias = perfiles.iloc[indices].copy()
 
     columnas = [
         "book_id",
@@ -407,14 +404,9 @@ def obtener_sugerencias_titulo(perfiles, titulo, limit=10):
         "emocion_dominante_es",
     ]
 
-    columnas = [
-        columna
-        for columna in columnas
-        if columna in sugerencias.columns
-    ]
+    columnas = [c for c in columnas if c in sugerencias.columns]
 
     return sugerencias[columnas].to_dict(orient="records")
-
 
 # ============================================================
 # SCORING
@@ -481,7 +473,7 @@ def construir_libro_base(fila):
         "genres": str(fila.get("genres", "")),
         "book_details": recortar_texto(fila.get("book_details", "")),
         "average_rating": round(float(fila.get("average_rating", 0.0)), 2),
-
+        "cover_image_uri": str(fila.get("cover_image_uri", "")),
         "joy": round(float(fila.get("joy", 0.0)), 4),
         "sadness": round(float(fila.get("sadness", 0.0)), 4),
         "fear": round(float(fila.get("fear", 0.0)), 4),
@@ -519,7 +511,7 @@ def construir_item_recomendacion(fila):
         "genres": str(fila.get("genres", "")),
         "book_details": recortar_texto(fila.get("book_details", "")),
         "average_rating": round(float(fila.get("average_rating", 0.0)), 2),
-
+        "cover_image_uri": str(fila.get("cover_image_uri", "")),
         "similarity": round(float(fila.get("similarity", 0.0)), 4),
         "score_final": round(float(fila.get("score_final", 0.0)), 4),
         "emotion_similarity": round(float(fila.get("emotion_similarity", 0.0)), 4),

@@ -36,7 +36,7 @@ function ResultsDisplay({ recommendations }) {
             />
 
             <MetricPill
-              label="Rating"
+              label="Valoración"
               value={Number(baseBook.average_rating || 0).toFixed(2)}
             />
 
@@ -52,11 +52,11 @@ function ResultsDisplay({ recommendations }) {
             </p>
           )}
 
-          {baseBook.book_details && (
+          {baseBook.book_details_es || baseBook.book_details && (
             <div className={styles.synopsisBox}>
               <span className={styles.synopsisTitle}>Sinopsis</span>
               <p className={styles.synopsis}>
-                {String(baseBook.book_details)}
+                {String(baseBook.book_details_es || baseBook.book_details)}
               </p>
             </div>
           )}
