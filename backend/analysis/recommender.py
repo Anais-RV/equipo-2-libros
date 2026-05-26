@@ -228,6 +228,7 @@ def cargar_books_metadata():
                 "genres",
                 "average_rating",
                 "language",
+                "book_details_es",
                 "book_details",
                 "cover_image_uri",
             ]
@@ -238,6 +239,7 @@ def cargar_books_metadata():
         "genres",
         "average_rating",
         "language",
+        "book_details_es",
         "book_details",
         "cover_image_uri",
     ]
@@ -260,11 +262,17 @@ def cargar_books_metadata():
     if "language" not in books.columns:
         books["language"] = ""
 
+    if "book_details_es" not in books.columns:
+        books["book_details_es"] = ""
+
     if "book_details" not in books.columns:
         books["book_details"] = ""
 
+   
+
     books["genres"] = books["genres"].fillna("").astype(str)
     books["language"] = books["language"].fillna("").astype(str)
+    books["book_details_es"] = books["book_details_es"].fillna("").astype(str)
     books["book_details"] = books["book_details"].fillna("").astype(str)
 
     books["average_rating"] = pd.to_numeric(
@@ -289,7 +297,7 @@ def cargar_perfiles():
             suffixes=("", "_book"),
         )
 
-    for columna in ["genres", "language", "book_details", "cover_image_uri"]:
+    for columna in ["genres", "language", "book_details_es", "book_details", "cover_image_uri"]:
         if columna not in perfiles.columns:
             perfiles[columna] = ""
 
@@ -372,28 +380,33 @@ def buscar_libro_por_titulo(perfiles, titulo):
 
 
 def obtener_sugerencias_titulo(perfiles, titulo, limit=10):
-    from rapidfuzz import process, fuzz
-
     titulo_normalizado = normalizar_texto(titulo)
 
     if titulo_normalizado == "":
         return []
 
-    titulos = perfiles["book_title"].astype(str).tolist()
+    palabras = [
+        palabra
+        for palabra in titulo_normalizado.split()
+        if len(palabra) > 2
+    ]
 
-    resultados = process.extract(
-        titulo_normalizado,
-        [normalizar_texto(t) for t in titulos],
-        scorer=fuzz.WRatio,
-        limit=limit,
-    )
-
-    indices = [r[2] for r in resultados if r[1] >= 70]
-
-    if not indices:
+    if not palabras:
         return []
 
-    sugerencias = perfiles.iloc[indices].copy()
+    primera_palabra = palabras[0]
+
+    sugerencias = perfiles[
+        perfiles["book_title"]
+        .astype(str)
+        .str.lower()
+        .str.contains(primera_palabra, na=False, regex=False)
+    ].copy()
+
+    sugerencias = sugerencias.sort_values(
+        by=["average_rating"],
+        ascending=False,
+    ).head(limit)
 
     columnas = [
         "book_id",
@@ -404,9 +417,14 @@ def obtener_sugerencias_titulo(perfiles, titulo, limit=10):
         "emocion_dominante_es",
     ]
 
-    columnas = [c for c in columnas if c in sugerencias.columns]
+    columnas = [
+        columna
+        for columna in columnas
+        if columna in sugerencias.columns
+    ]
 
     return sugerencias[columnas].to_dict(orient="records")
+
 
 # ============================================================
 # SCORING
@@ -471,6 +489,7 @@ def construir_libro_base(fila):
         "book_title": str(fila.get("book_title", "Título desconocido")),
         "author": str(fila.get("author", "Autor desconocido")),
         "genres": str(fila.get("genres", "")),
+        "book_details_es": recortar_texto(fila.get("book_details_es", "")),
         "book_details": recortar_texto(fila.get("book_details", "")),
         "average_rating": round(float(fila.get("average_rating", 0.0)), 2),
         "cover_image_uri": str(fila.get("cover_image_uri", "")),
@@ -509,6 +528,7 @@ def construir_item_recomendacion(fila):
         "book_title": str(fila.get("book_title", "Título desconocido")),
         "author": str(fila.get("author", "Autor desconocido")),
         "genres": str(fila.get("genres", "")),
+        "book_details_es": recortar_texto(fila.get("book_details_es", "")),
         "book_details": recortar_texto(fila.get("book_details", "")),
         "average_rating": round(float(fila.get("average_rating", 0.0)), 2),
         "cover_image_uri": str(fila.get("cover_image_uri", "")),
@@ -620,6 +640,7 @@ def find_similar_books(title, num_recommendations=5):
             "author": rec.get("author", "Autor desconocido"),
             "sentiment_score": rec.get("score_final", 0.0),
             "reason": rec.get("reason", ""),
+            "book_details_es": rec.get("book_details_es", ""),
             "book_details": rec.get("book_details", ""),
         })
 
@@ -720,6 +741,7 @@ def generar_recomendaciones_para_todos(top_n=5, min_reviews=1):
                 "book_title": libro_base_dict.get("book_title"),
                 "author": libro_base_dict.get("author", ""),
                 "genres": libro_base_dict.get("genres", ""),
+                "book_details_es": libro_base_dict.get("book_details_es", ""),
                 "book_details": libro_base_dict.get("book_details", ""),
                 "average_rating": libro_base_dict.get("average_rating", 0.0),
                 "emocion_dominante": libro_base_dict.get("emocion_dominante"),
@@ -730,6 +752,7 @@ def generar_recomendaciones_para_todos(top_n=5, min_reviews=1):
                 "recommended_book_title": rec_dict.get("book_title"),
                 "recommended_author": rec_dict.get("author", ""),
                 "recommended_genres": rec_dict.get("genres", ""),
+                "recommended_book_details_es": rec_dict.get("book_details_es", ""),
                 "recommended_book_details": rec_dict.get("book_details", ""),
                 "recommended_average_rating": rec_dict.get("average_rating", 0.0),
 
@@ -792,7 +815,7 @@ def mostrar_recomendaciones(titulo_libro, top_n=5):
     print("Título:", libro["book_title"])
     print("Autor:", libro["author"])
     print("Géneros:", libro.get("genres", ""))
-    print("Sinopsis:", libro.get("book_details", "")[:250])
+    print("Sinopsis:",libro.get("book_details_es")or libro.get("book_details", ""))
     print("Rating:", libro.get("average_rating", 0.0))
     print("Emoción dominante:", libro["emocion_dominante_es"])
     print("Joy:", libro["joy"])
@@ -809,7 +832,7 @@ def mostrar_recomendaciones(titulo_libro, top_n=5):
         print(f"\n{i}. {rec['book_title']}")
         print("Autor:", rec["author"])
         print("Géneros:", rec.get("genres", ""))
-        print("Sinopsis:", rec.get("book_details", "")[:250])
+        print("Sinopsis:",rec.get("book_details_es")or rec.get("book_details", ""))
         print("Rating:", rec.get("average_rating", 0.0))
         print("Score final:", rec["score_final"])
         print("Similitud emocional:", rec["emotion_similarity"])
