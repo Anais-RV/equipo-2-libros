@@ -229,6 +229,7 @@ def cargar_books_metadata():
                 "average_rating",
                 "language",
                 "book_details",
+                "cover_image_uri",
             ]
         )
 
@@ -238,6 +239,7 @@ def cargar_books_metadata():
         "average_rating",
         "language",
         "book_details",
+        "cover_image_uri",
     ]
 
     columnas_existentes = [
@@ -287,7 +289,7 @@ def cargar_perfiles():
             suffixes=("", "_book"),
         )
 
-    for columna in ["genres", "language", "book_details"]:
+    for columna in ["genres", "language", "book_details", "cover_image_uri"]:
         if columna not in perfiles.columns:
             perfiles[columna] = ""
 
@@ -481,7 +483,7 @@ def construir_libro_base(fila):
         "genres": str(fila.get("genres", "")),
         "book_details": recortar_texto(fila.get("book_details", "")),
         "average_rating": round(float(fila.get("average_rating", 0.0)), 2),
-
+        "cover_image_uri": str(fila.get("cover_image_uri", "")),
         "joy": round(float(fila.get("joy", 0.0)), 4),
         "sadness": round(float(fila.get("sadness", 0.0)), 4),
         "fear": round(float(fila.get("fear", 0.0)), 4),
@@ -519,7 +521,7 @@ def construir_item_recomendacion(fila):
         "genres": str(fila.get("genres", "")),
         "book_details": recortar_texto(fila.get("book_details", "")),
         "average_rating": round(float(fila.get("average_rating", 0.0)), 2),
-
+        "cover_image_uri": str(fila.get("cover_image_uri", "")),
         "similarity": round(float(fila.get("similarity", 0.0)), 4),
         "score_final": round(float(fila.get("score_final", 0.0)), 4),
         "emotion_similarity": round(float(fila.get("emotion_similarity", 0.0)), 4),

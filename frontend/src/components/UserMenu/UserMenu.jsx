@@ -6,7 +6,6 @@ export default function UserMenu({ token, onLogout }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState('menu'); // menu | perfil | review | historial
   const [user, setUser] = useState(null);
-  const [msg, setMsg] = useState('');
   const menuRef = useRef(null);
 
   // Cargar datos del usuario al abrir
@@ -88,6 +87,7 @@ export default function UserMenu({ token, onLogout }) {
               </p>
               <button style={styles.item} onClick={() => setView('perfil')}>👤 Perfil</button>
               <button style={styles.item} onClick={() => setView('review')}>✍️ Añadir reseña</button>
+              <button style={styles.item} onClick={() => setView('favoritos')}>❤️ Favoritos</button>
               <button style={styles.item} onClick={() => setView('historial')}>🕘 Historial</button>
               <button style={{ ...styles.item, color: '#ff6b6b' }} onClick={onLogout}>
                 🚪 Cerrar sesión
@@ -98,7 +98,7 @@ export default function UserMenu({ token, onLogout }) {
           {/* VISTA PERFIL */}
           {view === 'perfil' && (
             <Perfil token={token} user={user} setUser={setUser}
-                    onBack={() => { setView('menu'); setMsg(''); }} styles={styles} />
+                    onBack={() => { setView('menu') }} styles={styles} />
           )}
 
           {/* VISTA AÑADIR RESEÑA */}
@@ -109,6 +109,11 @@ export default function UserMenu({ token, onLogout }) {
           {/* VISTA HISTORIAL */}
           {view === 'historial' && (
             <Historial onBack={() => setView('menu')} styles={styles} />
+          )}
+
+          {/* VISTA FAVORITOS */}
+          {view === 'favoritos' && (
+          <Favoritos onBack={() => setView('menu')} styles={styles} />
           )}
 
         </div>
@@ -252,6 +257,52 @@ function Historial({ onBack, styles }) {
           }}>
             📖 {item}
           </p>
+        ))
+      )}
+    </>
+  );
+}
+
+// ---------- SUBCOMPONENTE: FAVORITOS ----------
+function Favoritos({ onBack, styles }) {
+  const [favs, setFavs] = useState(() => 
+    JSON.parse(localStorage.getItem('favorites') || '[]')
+  );
+
+  function eliminar(book_title) {
+    const nuevos = favs.filter(f => f.book_title !== book_title);
+    localStorage.setItem('favorites', JSON.stringify(nuevos));
+    setFavs(nuevos);
+  }
+
+  return (
+    <>
+      <button style={styles.back} onClick={onBack}>← Volver</button>
+      <h3 style={styles.title}>❤️ Mis favoritos</h3>
+      {favs.length === 0 ? (
+        <p style={{ fontSize: '0.85rem', color: '#aaa' }}>
+          Todavía no tienes favoritos guardados.
+        </p>
+      ) : (
+        favs.slice().reverse().map((book, i) => (
+          <div key={i} style={{
+            padding: '10px', background: '#0f0f1e',
+            borderRadius: '8px', marginBottom: '8px'
+          }}>
+            <p style={{ margin: '0 0 4px 0', fontWeight: 'bold', fontSize: '0.9rem' }}>
+              📖 {book.book_title}
+            </p>
+            <p style={{ margin: '0 0 6px 0', fontSize: '0.8rem', color: '#aaa' }}>
+              {book.author}
+            </p>
+            <button onClick={() => eliminar(book.book_title)} style={{
+              background: 'transparent', border: '1px solid #ff6b6b',
+              color: '#ff6b6b', borderRadius: '4px', padding: '3px 8px',
+              cursor: 'pointer', fontSize: '0.75rem'
+            }}>
+              Eliminar
+            </button>
+          </div>
         ))
       )}
     </>
