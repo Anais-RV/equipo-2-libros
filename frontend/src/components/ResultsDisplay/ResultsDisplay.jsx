@@ -36,7 +36,7 @@ function ResultsDisplay({ recommendations }) {
             />
 
             <MetricPill
-              label="Rating"
+              label="Valoración"
               value={Number(baseBook.average_rating || 0).toFixed(2)}
             />
 
