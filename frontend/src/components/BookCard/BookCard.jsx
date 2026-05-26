@@ -91,10 +91,12 @@ function BookCard({ book, position }) {
           <p className={styles.genres}>{String(book.genres)}</p>
         )}
 
-        {book.book_details && (
+        {(book.book_details_es || book.book_details) && (
           <div className={styles.synopsisBox}>
             <span className={styles.synopsisTitle}>Sinopsis</span>
-            <p className={styles.synopsis}>{String(book.book_details)}</p>
+            <p className={styles.synopsis}>
+              {String(book.book_details_es || book.book_details)}
+            </p>
           </div>
         )}
 
