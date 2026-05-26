@@ -372,33 +372,28 @@ def buscar_libro_por_titulo(perfiles, titulo):
 
 
 def obtener_sugerencias_titulo(perfiles, titulo, limit=10):
+    from rapidfuzz import process, fuzz
+
     titulo_normalizado = normalizar_texto(titulo)
 
     if titulo_normalizado == "":
         return []
 
-    palabras = [
-        palabra
-        for palabra in titulo_normalizado.split()
-        if len(palabra) > 2
-    ]
+    titulos = perfiles["book_title"].astype(str).tolist()
 
-    if not palabras:
+    resultados = process.extract(
+        titulo_normalizado,
+        [normalizar_texto(t) for t in titulos],
+        scorer=fuzz.WRatio,
+        limit=limit,
+    )
+
+    indices = [r[2] for r in resultados if r[1] >= 70]
+
+    if not indices:
         return []
 
-    primera_palabra = palabras[0]
-
-    sugerencias = perfiles[
-        perfiles["book_title"]
-        .astype(str)
-        .str.lower()
-        .str.contains(primera_palabra, na=False, regex=False)
-    ].copy()
-
-    sugerencias = sugerencias.sort_values(
-        by=["average_rating"],
-        ascending=False,
-    ).head(limit)
+    sugerencias = perfiles.iloc[indices].copy()
 
     columnas = [
         "book_id",
@@ -409,14 +404,9 @@ def obtener_sugerencias_titulo(perfiles, titulo, limit=10):
         "emocion_dominante_es",
     ]
 
-    columnas = [
-        columna
-        for columna in columnas
-        if columna in sugerencias.columns
-    ]
+    columnas = [c for c in columnas if c in sugerencias.columns]
 
     return sugerencias[columnas].to_dict(orient="records")
-
 
 # ============================================================
 # SCORING
