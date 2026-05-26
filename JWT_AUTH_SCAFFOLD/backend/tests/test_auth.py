@@ -9,7 +9,7 @@ La idea es: implementar funciones hasta que todos los tests pasen (TDD).
 """
 
 import pytest
-from backend.auth import hash_password, verify_password, create_access_token, verify_token
+from auth import hash_password, verify_password, create_access_token, verify_token
 
 
 # ============================================
