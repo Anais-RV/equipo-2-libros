@@ -34,12 +34,20 @@ export default function Login({ onLoginSuccess }) {
 
   return (
     <div style={{ maxWidth: '400px', margin: '100px auto', padding: '2rem',
-      background: '#1a1a2e', borderRadius: '12px', color: 'white' }}>
+      background: '#f4ece0', borderRadius: '12px', color: '#3a2c20',
+      border: '1px solid rgba(120,85,60,.20)',
+      boxShadow: '0 8px 30px rgba(90,60,40,.18)' }}>
       <h2 style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
         🦄 {isLogin ? 'Iniciar sesión' : 'Registrarse'}
       </h2>
 
-      {error && <p style={{ color: '#ff6b6b', marginBottom: '1rem' }}>{error}</p>}
+      {error && (
+        <p style={{
+          color: '#8a4a32', background: '#f0dcd0',
+          border: '1px solid #dcc0ad', borderRadius: '6px',
+          padding: '10px', marginBottom: '1rem', fontSize: '0.9rem'
+        }}>{error}</p>
+      )}
 
       <form onSubmit={handleSubmit}>
         <input
@@ -48,8 +56,9 @@ export default function Login({ onLoginSuccess }) {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email"
           required
-          style={{ width: '100%', padding: '10px', marginBottom: '1rem',
-            borderRadius: '6px', border: 'none', boxSizing: 'border-box' }}
+          style={{ width: '100%', padding: '12px', marginBottom: '1rem',
+            borderRadius: '6px', border: '1px solid rgba(120,85,60,.28)',
+            background: '#ffffff', color: '#3a2c20', boxSizing: 'border-box' }}
         />
         <input
           type="password"
@@ -57,12 +66,13 @@ export default function Login({ onLoginSuccess }) {
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Contraseña"
           required
-          style={{ width: '100%', padding: '10px', marginBottom: '1rem',
-            borderRadius: '6px', border: 'none', boxSizing: 'border-box' }}
+          style={{ width: '100%', padding: '12px', marginBottom: '1rem',
+            borderRadius: '6px', border: '1px solid rgba(120,85,60,.28)',
+            background: '#ffffff', color: '#3a2c20', boxSizing: 'border-box' }}
         />
         <button type="submit"
-          style={{ width: '100%', padding: '12px', background: '#6C3FC5',
-            color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer',
+          style={{ width: '100%', padding: '12px', background: '#a98467',
+            color: '#ffffff', border: 'none', borderRadius: '6px', cursor: 'pointer',
             fontWeight: 'bold', fontSize: '1rem' }}>
           {isLogin ? 'Entrar' : 'Crear cuenta'}
         </button>
@@ -70,7 +80,8 @@ export default function Login({ onLoginSuccess }) {
 
       <button onClick={() => setIsLogin(!isLogin)}
         style={{ width: '100%', marginTop: '1rem', padding: '10px',
-          background: 'transparent', color: '#aaa', border: '1px solid #444',
+          background: 'transparent', color: '#6b5947',
+          border: '1px solid rgba(120,85,60,.28)',
           borderRadius: '6px', cursor: 'pointer' }}>
         {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Entra'}
       </button>

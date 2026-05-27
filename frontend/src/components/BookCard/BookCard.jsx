@@ -10,9 +10,10 @@ function getFavs() {
   return JSON.parse(localStorage.getItem('favorites') || '[]');
 }
 
-function BookCard({ book, position }) {
+// isBase = true  -> es el libro base (sin posición, sin % match)
+function BookCard({ book, position, isBase = false }) {
   const score = Number(book.score_final ?? book.similarity ?? 0);
-  const [fav, setFav] = useState(() => 
+  const [fav, setFav] = useState(() =>
     getFavs().some(f => f.book_title === book.book_title)
   );
 
@@ -37,7 +38,11 @@ function BookCard({ book, position }) {
   return (
     <article className={styles.card}>
       <div className={styles.top}>
-        <div className={styles.rank}>#{position}</div>
+        {isBase ? (
+          <div className={styles.rank}>★</div>
+        ) : (
+          <div className={styles.rank}>#{position}</div>
+        )}
 
         {book.cover_image_uri && (
           <img
@@ -50,14 +55,20 @@ function BookCard({ book, position }) {
         <div className={styles.topRight}>
           <button onClick={toggleFav} style={{
             background: 'transparent', border: 'none', cursor: 'pointer',
-            fontSize: '1.4rem', color: fav ? '#f472b6' : '#aaa',
+            fontSize: '1.4rem', color: fav ? '#a98467' : '#9c8b78',
             padding: '0 4px', lineHeight: 1
           }}>
             {fav ? '♥' : '♡'}
           </button>
           <div className={styles.match}>
-            <span>{Math.round(score * 100)}%</span>
-            match
+            {isBase ? (
+              <span style={{ fontSize: '0.95rem' }}>Libro base</span>
+            ) : (
+              <>
+                <span>{Math.round(score * 100)}%</span>
+                match
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -72,17 +83,31 @@ function BookCard({ book, position }) {
             <strong>{book.emocion_dominante_es || book.emocion_dominante || '—'}</strong>
           </div>
           <div>
-            <span>Rating</span>
+            <span>Valoración</span>
             <strong>{Number(book.average_rating || 0).toFixed(2)}</strong>
           </div>
-          <div>
-            <span>Emoción</span>
-            <strong>{pct(book.emotion_similarity ?? book.similarity)}</strong>
-          </div>
-          <div>
-            <span>Géneros</span>
-            <strong>{pct(book.genre_similarity)}</strong>
-          </div>
+          {isBase ? (
+            <div>
+              <span>Sentimiento</span>
+              <strong>{Number(book.average_sentiment || 0).toFixed(2)}</strong>
+            </div>
+          ) : (
+            <div>
+              <span>Emoción</span>
+              <strong>{pct(book.emotion_similarity ?? book.similarity)}</strong>
+            </div>
+          )}
+          {isBase ? (
+            <div>
+              <span>Géneros</span>
+              <strong>{book.genres ? '✓' : '—'}</strong>
+            </div>
+          ) : (
+            <div>
+              <span>Géneros</span>
+              <strong>{pct(book.genre_similarity)}</strong>
+            </div>
+          )}
         </div>
 
         <EmotionBars profile={book} />
