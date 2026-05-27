@@ -32,38 +32,40 @@ export default function UserMenu({ token, onLogout }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // ESTILOS inline
+  // ESTILOS inline - paleta beige / marron / arena
   const styles = {
     wrapper: { position: 'fixed', top: '20px', right: '20px', zIndex: 1000 },
     avatar: {
       width: '44px', height: '44px', borderRadius: '50%', cursor: 'pointer',
-      background: 'linear-gradient(135deg, #6C3FC5, #C04AC5)', color: 'white',
-      border: 'none', fontWeight: 'bold', fontSize: '1.1rem'
+      background: 'linear-gradient(135deg, #a98467, #d4a373)', color: '#3a2c20',
+      border: '1px solid rgba(120,85,60,.25)', fontWeight: 'bold', fontSize: '1.1rem'
     },
     dropdown: {
       position: 'absolute', top: '54px', right: '0', width: '300px',
-      background: '#1a1a2e', borderRadius: '12px', padding: '1rem',
-      boxShadow: '0 8px 30px rgba(0,0,0,0.5)', color: 'white'
+      background: '#f4ece0', borderRadius: '12px', padding: '1rem',
+      boxShadow: '0 8px 30px rgba(90,60,40,.25)', color: '#3a2c20',
+      border: '1px solid rgba(120,85,60,.20)'
     },
     item: {
       display: 'block', width: '100%', padding: '12px', marginBottom: '4px',
-      background: 'transparent', color: 'white', border: 'none',
+      background: 'transparent', color: '#3a2c20', border: 'none',
       textAlign: 'left', cursor: 'pointer', borderRadius: '6px', fontSize: '0.95rem'
     },
     input: {
       width: '100%', padding: '10px', marginBottom: '0.8rem', borderRadius: '6px',
-      border: 'none', boxSizing: 'border-box'
+      border: '1px solid rgba(120,85,60,.28)', boxSizing: 'border-box',
+      background: '#fff', color: '#3a2c20'
     },
     btn: {
-      width: '100%', padding: '10px', background: '#6C3FC5', color: 'white',
+      width: '100%', padding: '10px', background: '#a98467', color: '#fff',
       border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold'
     },
     back: {
-      background: 'transparent', color: '#aaa', border: 'none',
+      background: 'transparent', color: '#9c8b78', border: 'none',
       cursor: 'pointer', marginBottom: '0.8rem', padding: 0
     },
-    title: { margin: '0 0 1rem 0', fontSize: '1.1rem' },
-    msg: { color: '#7ee787', fontSize: '0.85rem', marginTop: '0.5rem' }
+    title: { margin: '0 0 1rem 0', fontSize: '1.1rem', color: '#3a2c20' },
+    msg: { color: '#7a9471', fontSize: '0.85rem', marginTop: '0.5rem' }
   };
 
   const inicial = user?.username
@@ -82,14 +84,13 @@ export default function UserMenu({ token, onLogout }) {
           {/* VISTA MENU */}
           {view === 'menu' && (
             <>
-              <p style={{ margin: '0 0 0.8rem 0', fontSize: '0.85rem', color: '#aaa' }}>
+              <p style={{ margin: '0 0 0.8rem 0', fontSize: '0.85rem', color: '#9c8b78' }}>
                 {user?.username || user?.email || 'Cargando...'}
               </p>
               <button style={styles.item} onClick={() => setView('perfil')}>👤 Perfil</button>
               <button style={styles.item} onClick={() => setView('review')}>✍️ Añadir reseña</button>
-              <button style={styles.item} onClick={() => setView('favoritos')}>❤️ Favoritos</button>
               <button style={styles.item} onClick={() => setView('historial')}>🕘 Historial</button>
-              <button style={{ ...styles.item, color: '#ff6b6b' }} onClick={onLogout}>
+              <button style={{ ...styles.item, color: '#b5552f' }} onClick={onLogout}>
                 🚪 Cerrar sesión
               </button>
             </>
@@ -98,7 +99,7 @@ export default function UserMenu({ token, onLogout }) {
           {/* VISTA PERFIL */}
           {view === 'perfil' && (
             <Perfil token={token} user={user} setUser={setUser}
-                    onBack={() => { setView('menu') }} styles={styles} />
+                    onBack={() => setView('menu')} styles={styles} />
           )}
 
           {/* VISTA AÑADIR RESEÑA */}
@@ -109,11 +110,6 @@ export default function UserMenu({ token, onLogout }) {
           {/* VISTA HISTORIAL */}
           {view === 'historial' && (
             <Historial onBack={() => setView('menu')} styles={styles} />
-          )}
-
-          {/* VISTA FAVORITOS */}
-          {view === 'favoritos' && (
-          <Favoritos onBack={() => setView('menu')} styles={styles} />
           )}
 
         </div>
@@ -169,7 +165,7 @@ function Perfil({ token, user, setUser, onBack, styles }) {
     <>
       <button style={styles.back} onClick={onBack}>← Volver</button>
       <h3 style={styles.title}>Perfil</h3>
-      <p style={{ fontSize: '0.85rem', color: '#aaa' }}>Email: {user?.email}</p>
+      <p style={{ fontSize: '0.85rem', color: '#9c8b78' }}>Email: {user?.email}</p>
 
       <p style={{ fontSize: '0.85rem', marginBottom: '0.4rem' }}>Nombre de usuario</p>
       <input style={styles.input} value={username}
@@ -246,63 +242,17 @@ function Historial({ onBack, styles }) {
       <button style={styles.back} onClick={onBack}>← Volver</button>
       <h3 style={styles.title}>Historial de búsquedas</h3>
       {historial.length === 0 ? (
-        <p style={{ fontSize: '0.85rem', color: '#aaa' }}>
+        <p style={{ fontSize: '0.85rem', color: '#9c8b78' }}>
           Todavía no has buscado nada.
         </p>
       ) : (
         historial.slice().reverse().map((item, i) => (
           <p key={i} style={{
-            fontSize: '0.9rem', padding: '8px', background: '#0f0f1e',
-            borderRadius: '6px', marginBottom: '4px'
+            fontSize: '0.9rem', padding: '8px', background: 'rgba(120,85,60,.08)',
+            borderRadius: '6px', marginBottom: '4px', color: '#3a2c20'
           }}>
             📖 {item}
           </p>
-        ))
-      )}
-    </>
-  );
-}
-
-// ---------- SUBCOMPONENTE: FAVORITOS ----------
-function Favoritos({ onBack, styles }) {
-  const [favs, setFavs] = useState(() => 
-    JSON.parse(localStorage.getItem('favorites') || '[]')
-  );
-
-  function eliminar(book_title) {
-    const nuevos = favs.filter(f => f.book_title !== book_title);
-    localStorage.setItem('favorites', JSON.stringify(nuevos));
-    setFavs(nuevos);
-  }
-
-  return (
-    <>
-      <button style={styles.back} onClick={onBack}>← Volver</button>
-      <h3 style={styles.title}>❤️ Mis favoritos</h3>
-      {favs.length === 0 ? (
-        <p style={{ fontSize: '0.85rem', color: '#aaa' }}>
-          Todavía no tienes favoritos guardados.
-        </p>
-      ) : (
-        favs.slice().reverse().map((book, i) => (
-          <div key={i} style={{
-            padding: '10px', background: '#0f0f1e',
-            borderRadius: '8px', marginBottom: '8px'
-          }}>
-            <p style={{ margin: '0 0 4px 0', fontWeight: 'bold', fontSize: '0.9rem' }}>
-              📖 {book.book_title}
-            </p>
-            <p style={{ margin: '0 0 6px 0', fontSize: '0.8rem', color: '#aaa' }}>
-              {book.author}
-            </p>
-            <button onClick={() => eliminar(book.book_title)} style={{
-              background: 'transparent', border: '1px solid #ff6b6b',
-              color: '#ff6b6b', borderRadius: '4px', padding: '3px 8px',
-              cursor: 'pointer', fontSize: '0.75rem'
-            }}>
-              Eliminar
-            </button>
-          </div>
         ))
       )}
     </>
