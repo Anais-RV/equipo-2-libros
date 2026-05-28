@@ -90,8 +90,7 @@ export default function UserMenu({ token, onLogout }) {
               <button style={styles.item} onClick={() => setView('perfil')}>👤 Perfil</button>
               <button style={styles.item} onClick={() => setView('review')}>✍️ Añadir reseña</button>
               <button style={styles.item} onClick={() => setView('historial')}>🕘 Historial</button>
-              <button style={{ ...styles.item, color: '#b5552f' }} onClick={onLogout}>
-                🚪 Cerrar sesión
+              <button style={styles.item} onClick={() => setView('favoritos')}> 🤎 Favoritos</button>     <button style={{ ...styles.item, color: '#b5552f' }} onClick={onLogout}>🚪 Cerrar sesión
               </button>
             </>
           )}
@@ -111,7 +110,10 @@ export default function UserMenu({ token, onLogout }) {
           {view === 'historial' && (
             <Historial onBack={() => setView('menu')} styles={styles} />
           )}
-
+          {/* VISTA FAVORITOS */}
+          {view === 'favoritos' && (
+             <Favoritos onBack={() => setView('menu')} styles={styles} />
+          )}
         </div>
       )}
     </div>
@@ -255,6 +257,27 @@ function Historial({ onBack, styles }) {
           </p>
         ))
       )}
+    </>
+  );
+}
+
+// ---------- SUBCOMPONENTE: FAVORITOS ----------
+function Favoritos({ onBack, styles }) {
+  const favoritos = JSON.parse(localStorage.getItem('favorites') || '[]');
+
+  return (
+    <>
+      <button style={styles.back} onClick={onBack}>
+        ← Volver
+      </button>
+
+      <h3 style={styles.title}>Favoritos</h3>
+
+      {favoritos.map((book, i) => (
+        <p key={i}>
+          🤎 {book.book_title}
+        </p>
+      ))}
     </>
   );
 }
