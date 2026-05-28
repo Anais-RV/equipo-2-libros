@@ -2,9 +2,10 @@
   max-width: 400px;
   margin: 50px auto;
   padding: 30px;
-  background: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: #f4ece0;
+  border-radius: 12px;
+  border: 1px solid rgba(120, 85, 60, 0.20);
+  box-shadow: 0 8px 30px rgba(90, 60, 40, 0.18);
 }
 
 .auth-form {
@@ -16,7 +17,7 @@
 .auth-title {
   margin: 0 0 10px 0;
   font-size: 24px;
-  color: #333333;
+  color: #3a2c20;
   text-align: center;
 }
 
@@ -28,72 +29,75 @@
 
 .auth-input {
   padding: 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  border: 1px solid rgba(120, 85, 60, 0.28);
+  border-radius: 6px;
   font-size: 16px;
   font-family: inherit;
+  background: #ffffff;
+  color: #3a2c20;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .auth-input:focus {
   outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+  border-color: #a98467;
+  box-shadow: 0 0 0 3px rgba(169, 132, 103, 0.15);
 }
 
 .auth-input:disabled {
-  background-color: #f5f5f5;
+  background-color: #ece2d2;
   cursor: not-allowed;
   opacity: 0.7;
 }
 
 .auth-button {
   padding: 12px;
-  background-color: #007bff;
+  background-color: #a98467;
   color: #ffffff;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
 .auth-button:hover:not(:disabled) {
-  background-color: #0056b3;
+  background-color: #8c6b52;
 }
 
 .auth-button:disabled {
-  background-color: #ccc;
+  background-color: #c9bba8;
   cursor: not-allowed;
 }
 
 .auth-toggle {
   padding: 12px;
-  background-color: #6c757d;
-  color: #ffffff;
-  border: none;
-  border-radius: 4px;
+  background-color: transparent;
+  color: #6b5947;
+  border: 1px solid rgba(120, 85, 60, 0.28);
+  border-radius: 6px;
   font-size: 14px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, color 0.2s;
 }
 
 .auth-toggle:hover:not(:disabled) {
-  background-color: #5a6268;
+  background-color: rgba(169, 132, 103, 0.12);
+  color: #3a2c20;
 }
 
 .auth-toggle:disabled {
-  background-color: #ccc;
+  background-color: #ece2d2;
   cursor: not-allowed;
 }
 
 .auth-error {
   padding: 12px;
-  background-color: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
-  border-radius: 4px;
+  background-color: #f0dcd0;
+  color: #8a4a32;
+  border: 1px solid #dcc0ad;
+  border-radius: 6px;
   font-size: 14px;
   margin: 0;
 }

@@ -1,1 +1,7 @@
-.radar{display:grid;place-items:center}.ring{fill:rgba(255,255,255,.025);stroke:rgba(255,255,255,.13);stroke-width:1}.axis{stroke:rgba(255,255,255,.12);stroke-width:1}.label{fill:rgba(226,232,240,.82);font-size:10px;font-weight:850}.area{fill:rgba(34,211,238,.18)}.stroke{fill:rgba(34,211,238,.18);stroke:rgba(34,211,238,.9);stroke-width:2;filter:drop-shadow(0 0 10px rgba(34,211,238,.35))}.pt{fill:white;stroke:rgba(34,211,238,.95);stroke-width:2}
+.radar{display:grid;place-items:center}
+.ring{fill:rgba(101,67,33,.07);stroke:rgba(101,67,33,.55);stroke-width:1.2}
+.axis{stroke:rgba(101,67,33,.50);stroke-width:1.2}
+.label{fill:rgba(58,40,22,.92);font-size:10px;font-weight:850}
+.area{fill:rgba(124,89,45,.30)}
+.stroke{fill:rgba(124,89,45,.30);stroke:rgba(124,89,45,1);stroke-width:2.2;filter:drop-shadow(0 0 10px rgba(124,89,45,.45))}
+.pt{fill:#fff;stroke:rgba(101,67,33,1);stroke-width:2}
